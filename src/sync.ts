@@ -112,8 +112,8 @@ export class SyncEngine {
 		const highlights: HighlightData[] = (article.annotations ?? []).map(
 			(ann) => ({
 				id: ann.id,
-				text: ann.text,
-				note: ann.note ?? "",
+				text: (ann.text ?? "").trim(),
+				note: (ann.note ?? "").trim(),
 				addedOn: new Date(ann.added_on * 1000).toISOString(),
 			}),
 		);
