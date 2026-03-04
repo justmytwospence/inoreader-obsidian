@@ -29,3 +29,9 @@
   font-family: var(--font-monospace);
   font-size: 0.85em;
 }
+
+.inoreader-sync-settings .subsettings {
+  padding-left: 24px;
+  border-left: 2px solid var(--background-modifier-border);
+  margin-left: 12px;
+}

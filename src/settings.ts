@@ -209,7 +209,8 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			);
 
 		if (this.plugin.settings.syncAnnotations) {
-			new Setting(containerEl)
+			const annotationSub = containerEl.createDiv("subsettings");
+			new Setting(annotationSub)
 				.setName("Include annotations")
 				.setDesc("Include highlight text and notes in article files (requires Inoreader Pro)")
 				.addToggle((toggle) =>
@@ -236,9 +237,10 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			);
 
 		if (this.plugin.settings.syncTagsEnabled) {
-			containerEl.createEl("h3", { text: "Your Inoreader tags" });
+			const tagSub = containerEl.createDiv("subsettings");
+			tagSub.createEl("h3", { text: "Your Inoreader tags" });
 
-			const tagContainer = containerEl.createDiv("tag-selection-container");
+			const tagContainer = tagSub.createDiv("tag-selection-container");
 			if (this.plugin.settings.isConnected) {
 				this.renderTagToggles(tagContainer);
 			} else {
@@ -379,7 +381,9 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			);
 
 		if (this.plugin.settings.appendToPeriodicNote) {
-			new Setting(containerEl)
+			const periodicSub = containerEl.createDiv("subsettings");
+
+			new Setting(periodicSub)
 				.setName("Note type")
 				.addDropdown((dropdown) =>
 					dropdown
@@ -392,7 +396,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						}),
 				);
 
-			new Setting(containerEl)
+			new Setting(periodicSub)
 				.setName("Folder")
 				.setDesc("Leave empty to auto-detect from Daily Notes or Periodic Notes plugin")
 				.addText((text) =>
@@ -405,7 +409,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						}),
 				);
 
-			new Setting(containerEl)
+			new Setting(periodicSub)
 				.setName("Date format")
 				.setDesc("Leave empty to auto-detect. Supports YYYY, MM, DD, WW")
 				.addText((text) =>
@@ -418,7 +422,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						}),
 				);
 
-			new Setting(containerEl)
+			new Setting(periodicSub)
 				.setName("Heading")
 				.setDesc("Heading to append entries under in the periodic note")
 				.addText((text) =>
@@ -431,7 +435,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						}),
 				);
 
-			new Setting(containerEl)
+			new Setting(periodicSub)
 				.setName("Entry template")
 				.setDesc(
 					"Template for each entry appended to periodic notes. Leave empty for default. " +
