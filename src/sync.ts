@@ -45,6 +45,7 @@ export class SyncEngine {
 					sinceTimestamp,
 					fullResync,
 					processedInRun,
+					this.settings.appendToPeriodicNote,
 				);
 			} catch (e) {
 				console.error("Inoreader: failed to sync annotations", e);
@@ -64,6 +65,7 @@ export class SyncEngine {
 					sinceTimestamp,
 					fullResync,
 					processedInRun,
+					false,
 				);
 			} catch (e) {
 				console.error(`Inoreader: failed to sync tag "${tagName}"`, e);
@@ -89,6 +91,7 @@ export class SyncEngine {
 		sinceTimestamp: number,
 		fullResync: boolean,
 		crossDedup: Set<string>,
+		appendToPeriodicNote: boolean,
 	): Promise<number> {
 		let articles: InoreaderArticle[];
 		try {
@@ -122,7 +125,7 @@ export class SyncEngine {
 			try {
 				const data = this.transformArticle(article);
 				await this.writeArticleFile(data, folderPath);
-				if (this.settings.appendToPeriodicNote) {
+				if (appendToPeriodicNote) {
 					await this.appendToPeriodicNote(data);
 				}
 				crossDedup.add(article.id);
@@ -332,12 +335,23 @@ export class SyncEngine {
 		}
 	}
 
+	private static readonly NOTE_TYPE_DEFAULTS: Record<string, string> = {
+		daily: "YYYY-MM-DD",
+		weekly: "gggg-[W]ww",
+		monthly: "YYYY-MM",
+		quarterly: "YYYY-[Q]Q",
+		yearly: "YYYY",
+	};
+
 	private resolvePeriodicNoteConfig(): { folder: string; format: string } {
+		const noteType = this.settings.periodicNoteType;
+		const defaultFormat = SyncEngine.NOTE_TYPE_DEFAULTS[noteType] ?? "YYYY-MM-DD";
+
 		// If user specified explicit values, use them
 		if (this.settings.periodicNoteFolder || this.settings.periodicNoteDateFormat !== "YYYY-MM-DD") {
 			return {
 				folder: this.settings.periodicNoteFolder,
-				format: this.settings.periodicNoteDateFormat || "YYYY-MM-DD",
+				format: this.settings.periodicNoteDateFormat || defaultFormat,
 			};
 		}
 
@@ -345,36 +359,33 @@ export class SyncEngine {
 		const periodicNotes = (this.app as any).plugins?.plugins?.["periodic-notes"];
 		if (periodicNotes?.enabled) {
 			const pnSettings = periodicNotes.settings;
-			if (this.settings.periodicNoteType === "daily" && pnSettings?.daily?.enabled) {
+			const pnType = pnSettings?.[noteType];
+			if (pnType?.enabled) {
 				return {
-					folder: pnSettings.daily.folder || "",
-					format: pnSettings.daily.format || "YYYY-MM-DD",
-				};
-			}
-			if (this.settings.periodicNoteType === "weekly" && pnSettings?.weekly?.enabled) {
-				return {
-					folder: pnSettings.weekly.folder || "",
-					format: pnSettings.weekly.format || "YYYY-[W]WW",
+					folder: pnType.folder || "",
+					format: pnType.format || defaultFormat,
 				};
 			}
 		}
 
 		// Try to read from Daily Notes core plugin
-		const dailyNotes = (this.app as any).internalPlugins?.plugins?.["daily-notes"];
-		if (dailyNotes?.enabled && this.settings.periodicNoteType === "daily") {
-			const config = dailyNotes.instance?.options;
-			if (config) {
-				return {
-					folder: config.folder || "",
-					format: config.format || "YYYY-MM-DD",
-				};
+		if (noteType === "daily") {
+			const dailyNotes = (this.app as any).internalPlugins?.plugins?.["daily-notes"];
+			if (dailyNotes?.enabled) {
+				const config = dailyNotes.instance?.options;
+				if (config) {
+					return {
+						folder: config.folder || "",
+						format: config.format || defaultFormat,
+					};
+				}
 			}
 		}
 
 		// Defaults
 		return {
 			folder: "",
-			format: this.settings.periodicNoteType === "weekly" ? "YYYY-[W]WW" : "YYYY-MM-DD",
+			format: defaultFormat,
 		};
 	}
 

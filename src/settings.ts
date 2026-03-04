@@ -1,7 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type InoreaderSyncPlugin from "./main";
 
-export type NoteType = "daily" | "weekly";
+export type NoteType = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 export type UpdateBehavior = "append" | "overwrite";
 export type InsertPosition = "append" | "prepend";
 
@@ -389,6 +389,9 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					dropdown
 						.addOption("daily", "Daily notes")
 						.addOption("weekly", "Weekly notes")
+						.addOption("monthly", "Monthly notes")
+						.addOption("quarterly", "Quarterly notes")
+						.addOption("yearly", "Yearly notes")
 						.setValue(this.plugin.settings.periodicNoteType)
 						.onChange(async (value: string) => {
 							this.plugin.settings.periodicNoteType = value as NoteType;
@@ -411,7 +414,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 
 			new Setting(periodicSub)
 				.setName("Date format")
-				.setDesc("Leave empty to auto-detect. Supports YYYY, MM, DD, WW")
+				.setDesc("Leave empty to auto-detect. Tokens: YYYY, gggg (ISO week year), MM, DD, WW/ww, Q")
 				.addText((text) =>
 					text
 						.setPlaceholder("YYYY-MM-DD")
