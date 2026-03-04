@@ -1,0 +1,466 @@
+import { App, PluginSettingTab, Setting } from "obsidian";
+import type InoreaderSyncPlugin from "./main";
+
+export type SyncSource = "starred" | "annotated" | "tagged" | "all";
+export type NoteType = "daily" | "weekly";
+export type UpdateBehavior = "append" | "overwrite";
+
+export interface InoreaderSyncSettings {
+	// Auth
+	clientId: string;
+	clientSecret: string;
+	accessToken: string;
+	refreshToken: string;
+	tokenExpiresAt: number;
+	isConnected: boolean;
+
+	// Sync source
+	syncSource: SyncSource;
+	syncTag: string;
+	includeAnnotations: boolean;
+	onlyHighlighted: boolean;
+
+	// Article files
+	articleFolder: string;
+	filenameTemplate: string;
+	articleTemplate: string;
+	includeContent: boolean;
+	frontmatterFields: string[];
+
+	// Daily/weekly notes
+	appendToPeriodicNote: boolean;
+	periodicNoteType: NoteType;
+	periodicNoteFolder: string;
+	periodicNoteDateFormat: string;
+	periodicNoteHeading: string;
+	dailyNoteEntryTemplate: string;
+
+	// Sync behavior
+	syncOnStartup: boolean;
+	syncIntervalMinutes: number;
+	updateBehavior: UpdateBehavior;
+
+	// Internal state
+	lastSyncTimestamp: number;
+	syncedArticleIds: string[];
+}
+
+export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
+	clientId: "",
+	clientSecret: "",
+	accessToken: "",
+	refreshToken: "",
+	tokenExpiresAt: 0,
+	isConnected: false,
+
+	syncSource: "annotated",
+	syncTag: "",
+	includeAnnotations: true,
+	onlyHighlighted: true,
+
+	articleFolder: "Inoreader",
+	filenameTemplate: "{{title}}",
+	articleTemplate: "",
+	includeContent: false,
+	frontmatterFields: ["title", "author", "url", "published", "feed", "tags"],
+
+	appendToPeriodicNote: false,
+	periodicNoteType: "daily",
+	periodicNoteFolder: "",
+	periodicNoteDateFormat: "YYYY-MM-DD",
+	periodicNoteHeading: "## Inoreader",
+	dailyNoteEntryTemplate: "",
+
+	syncOnStartup: false,
+	syncIntervalMinutes: 0,
+	updateBehavior: "append",
+
+	lastSyncTimestamp: 0,
+	syncedArticleIds: [],
+};
+
+export class InoreaderSyncSettingTab extends PluginSettingTab {
+	plugin: InoreaderSyncPlugin;
+
+	constructor(app: App, plugin: InoreaderSyncPlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+		containerEl.addClass("inoreader-sync-settings");
+
+		// --- Connection ---
+		containerEl.createEl("h2", { text: "Connection" });
+
+		const statusEl = containerEl.createDiv("connection-status");
+		if (this.plugin.settings.isConnected) {
+			statusEl.addClass("connected");
+			statusEl.setText("Connected");
+		} else {
+			statusEl.addClass("disconnected");
+			statusEl.setText("Not connected");
+		}
+
+		new Setting(containerEl)
+			.setName("Client ID")
+			.setDesc("From your Inoreader developer application")
+			.addText((text) =>
+				text
+					.setPlaceholder("Enter client ID")
+					.setValue(this.plugin.settings.clientId)
+					.onChange(async (value) => {
+						this.plugin.settings.clientId = value;
+						this.plugin.api.updateCredentials(value, this.plugin.settings.clientSecret);
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Client Secret")
+			.setDesc("From your Inoreader developer application")
+			.addText((text) => {
+				text
+					.setPlaceholder("Enter client secret")
+					.setValue(this.plugin.settings.clientSecret)
+					.onChange(async (value) => {
+						this.plugin.settings.clientSecret = value;
+						this.plugin.api.updateCredentials(this.plugin.settings.clientId, value);
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.type = "password";
+			});
+
+		new Setting(containerEl)
+			.setName("Connect")
+			.setDesc("Authenticate with Inoreader via OAuth")
+			.addButton((btn) =>
+				btn
+					.setButtonText(this.plugin.settings.isConnected ? "Reconnect" : "Connect to Inoreader")
+					.onClick(() => this.plugin.startOAuthFlow()),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText("Disconnect")
+					.setWarning()
+					.setDisabled(!this.plugin.settings.isConnected)
+					.onClick(async () => {
+						this.plugin.disconnect();
+						this.display();
+					}),
+			);
+
+		// --- Sync Source ---
+		containerEl.createEl("h2", { text: "Sync Source" });
+
+		new Setting(containerEl)
+			.setName("Source")
+			.setDesc("Which articles to sync from Inoreader")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("annotated", "Annotated articles")
+					.addOption("starred", "Starred articles")
+					.addOption("tagged", "Tagged articles")
+					.addOption("all", "All articles (reading list)")
+					.setValue(this.plugin.settings.syncSource)
+					.onChange(async (value: string) => {
+						this.plugin.settings.syncSource = value as SyncSource;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.syncSource === "tagged") {
+			new Setting(containerEl)
+				.setName("Tag name")
+				.setDesc("The Inoreader tag/label to sync")
+				.addText((text) =>
+					text
+						.setPlaceholder("e.g. Read Later")
+						.setValue(this.plugin.settings.syncTag)
+						.onChange(async (value) => {
+							this.plugin.settings.syncTag = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		new Setting(containerEl)
+			.setName("Only sync highlighted articles")
+			.setDesc("When enabled, only articles with at least one highlight or annotation are synced")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.onlyHighlighted)
+					.onChange(async (value) => {
+						this.plugin.settings.onlyHighlighted = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Include annotations")
+			.setDesc("Fetch highlights and notes (requires Inoreader Pro)")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.includeAnnotations)
+					.onChange(async (value) => {
+						this.plugin.settings.includeAnnotations = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// --- Article Files ---
+		containerEl.createEl("h2", { text: "Article Files" });
+
+		new Setting(containerEl)
+			.setName("Output folder")
+			.setDesc("Folder where article files are created")
+			.addText((text) =>
+				text
+					.setPlaceholder("Inoreader")
+					.setValue(this.plugin.settings.articleFolder)
+					.onChange(async (value) => {
+						this.plugin.settings.articleFolder = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Filename template")
+			.setDesc("Variables: {{title}}, {{author}}, {{date}}, {{feed}}")
+			.addText((text) =>
+				text
+					.setPlaceholder("{{title}}")
+					.setValue(this.plugin.settings.filenameTemplate)
+					.onChange(async (value) => {
+						this.plugin.settings.filenameTemplate = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Include full article content")
+			.setDesc("Convert article HTML to markdown and append below highlights")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.includeContent)
+					.onChange(async (value) => {
+						this.plugin.settings.includeContent = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Article template")
+			.setDesc(
+				"Custom template for article files. Leave empty for default. " +
+				"Variables: {{title}}, {{author}}, {{url}}, {{feed_title}}, {{feed_url}}, " +
+				"{{published_date}}, {{highlights}}, {{content}}, {{highlight_count}}, " +
+				"{{tags}}, {{frontmatter}}, {{id}}",
+			)
+			.addTextArea((text) => {
+				text
+					.setPlaceholder("Leave empty for default template")
+					.setValue(this.plugin.settings.articleTemplate)
+					.onChange(async (value) => {
+						this.plugin.settings.articleTemplate = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 12;
+				text.inputEl.cols = 50;
+			});
+
+		// Frontmatter fields
+		const fmFields = ["title", "author", "url", "published", "feed", "tags"];
+		new Setting(containerEl)
+			.setName("Frontmatter fields")
+			.setDesc("Which metadata fields to include in frontmatter (inoreader_id is always included)");
+
+		for (const field of fmFields) {
+			new Setting(containerEl)
+				.setName(`  ${field}`)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.frontmatterFields.includes(field))
+						.onChange(async (value) => {
+							if (value) {
+								if (!this.plugin.settings.frontmatterFields.includes(field)) {
+									this.plugin.settings.frontmatterFields.push(field);
+								}
+							} else {
+								this.plugin.settings.frontmatterFields =
+									this.plugin.settings.frontmatterFields.filter((f) => f !== field);
+							}
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		// --- Periodic Notes ---
+		containerEl.createEl("h2", { text: "Periodic Notes" });
+
+		new Setting(containerEl)
+			.setName("Append to periodic notes")
+			.setDesc("Add entries to your daily or weekly notes when syncing")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.appendToPeriodicNote)
+					.onChange(async (value) => {
+						this.plugin.settings.appendToPeriodicNote = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.appendToPeriodicNote) {
+			new Setting(containerEl)
+				.setName("Note type")
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOption("daily", "Daily notes")
+						.addOption("weekly", "Weekly notes")
+						.setValue(this.plugin.settings.periodicNoteType)
+						.onChange(async (value: string) => {
+							this.plugin.settings.periodicNoteType = value as NoteType;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName("Folder")
+				.setDesc("Leave empty to auto-detect from Daily Notes or Periodic Notes plugin")
+				.addText((text) =>
+					text
+						.setPlaceholder("Auto-detect")
+						.setValue(this.plugin.settings.periodicNoteFolder)
+						.onChange(async (value) => {
+							this.plugin.settings.periodicNoteFolder = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName("Date format")
+				.setDesc("Leave empty to auto-detect. Supports YYYY, MM, DD, WW")
+				.addText((text) =>
+					text
+						.setPlaceholder("YYYY-MM-DD")
+						.setValue(this.plugin.settings.periodicNoteDateFormat)
+						.onChange(async (value) => {
+							this.plugin.settings.periodicNoteDateFormat = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName("Heading")
+				.setDesc("Heading to append entries under in the periodic note")
+				.addText((text) =>
+					text
+						.setPlaceholder("## Inoreader")
+						.setValue(this.plugin.settings.periodicNoteHeading)
+						.onChange(async (value) => {
+							this.plugin.settings.periodicNoteHeading = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(containerEl)
+				.setName("Entry template")
+				.setDesc(
+					"Template for each entry appended to periodic notes. Leave empty for default. " +
+					"Variables: {{title}}, {{url}}, {{author}}, {{feed_title}}, {{published_date}}, " +
+					"{{highlight_count}}, {{#each highlights}}...{{/each}}",
+				)
+				.addTextArea((text) => {
+					text
+						.setPlaceholder("Leave empty for default template")
+						.setValue(this.plugin.settings.dailyNoteEntryTemplate)
+						.onChange(async (value) => {
+							this.plugin.settings.dailyNoteEntryTemplate = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.rows = 8;
+					text.inputEl.cols = 50;
+				});
+		}
+
+		// --- Sync Behavior ---
+		containerEl.createEl("h2", { text: "Sync Behavior" });
+
+		new Setting(containerEl)
+			.setName("Sync on startup")
+			.setDesc("Automatically sync when Obsidian opens")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.syncOnStartup)
+					.onChange(async (value) => {
+						this.plugin.settings.syncOnStartup = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Sync interval")
+			.setDesc("How often to automatically sync (0 = manual only)")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("0", "Manual only")
+					.addOption("15", "Every 15 minutes")
+					.addOption("30", "Every 30 minutes")
+					.addOption("60", "Every hour")
+					.addOption("360", "Every 6 hours")
+					.addOption("720", "Every 12 hours")
+					.addOption("1440", "Every 24 hours")
+					.setValue(String(this.plugin.settings.syncIntervalMinutes))
+					.onChange(async (value) => {
+						this.plugin.settings.syncIntervalMinutes = parseInt(value, 10);
+						await this.plugin.saveSettings();
+						this.plugin.setupSyncInterval();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("Update behavior")
+			.setDesc("How to handle articles that already have a file")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("append", "Append new highlights only")
+					.addOption("overwrite", "Overwrite entire file")
+					.setValue(this.plugin.settings.updateBehavior)
+					.onChange(async (value: string) => {
+						this.plugin.settings.updateBehavior = value as UpdateBehavior;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		// --- Sync State ---
+		containerEl.createEl("h2", { text: "Sync State" });
+
+		const lastSync = this.plugin.settings.lastSyncTimestamp;
+		const lastSyncStr = lastSync
+			? new Date(lastSync * 1000).toLocaleString()
+			: "Never";
+
+		new Setting(containerEl)
+			.setName("Last sync")
+			.setDesc(lastSyncStr);
+
+		new Setting(containerEl)
+			.setName("Reset sync state")
+			.setDesc("Clear sync history to re-sync everything on next sync")
+			.addButton((btn) =>
+				btn
+					.setButtonText("Reset")
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.settings.lastSyncTimestamp = 0;
+						this.plugin.settings.syncedArticleIds = [];
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+	}
+}
