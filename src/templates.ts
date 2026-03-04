@@ -25,10 +25,13 @@ const DEFAULT_ARTICLE_TEMPLATE = `---
 {{/if}}
 `;
 
-const DEFAULT_DAILY_NOTE_ENTRY_TEMPLATE = `- [{{title}}]({{url}}) | {{feed_title}}{{#if highlight_count}} | {{highlight_count}} highlights{{/if}}
+const DEFAULT_DAILY_NOTE_ENTRY_TEMPLATE = `### [{{title}}]({{url}})
+
 {{#each highlights}}
-  > {{this.text}}{{#if this.note}}
-  > **Note**: {{this.note}}{{/if}}
+> {{this.text}}
+{{#if this.note}}
+{{this.note}}
+{{/if}}
 {{/each}}`;
 
 // --- Rendering Functions ---
@@ -60,7 +63,7 @@ export function renderArticleFile(data: ArticleData, settings: TemplateSettings)
 export function renderHighlightBlock(h: HighlightData): string {
 	let block = `> ${h.text}`;
 	if (h.note) {
-		block += `\n>\n> **Note**: ${h.note}`;
+		block += `\n\n${h.note}`;
 	}
 	return block;
 }
