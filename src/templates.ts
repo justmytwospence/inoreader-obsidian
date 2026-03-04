@@ -14,11 +14,7 @@ const DEFAULT_ARTICLE_TEMPLATE = `---
 {{frontmatter}}
 ---
 
-%% inoreader-highlights %%
-
 {{highlights}}
-
-%% /inoreader-highlights %%
 {{#if content}}
 
 ---
@@ -62,7 +58,7 @@ export function renderArticleFile(data: ArticleData, settings: TemplateSettings)
 }
 
 export function renderHighlightBlock(h: HighlightData): string {
-	let block = `%% hl:${h.id} %%\n> ${h.text}`;
+	let block = `> ${h.text}`;
 	if (h.note) {
 		block += `\n>\n> **Note**: ${h.note}`;
 	}
@@ -149,6 +145,11 @@ function buildFrontmatter(data: ArticleData, fields: string[]): string {
 
 	// Always include inoreader_id for dedup
 	lines.push(`inoreader_id: "${data.id}"`);
+
+	// Track highlight IDs for dedup on re-sync
+	if (data.highlights.length > 0) {
+		lines.push(`highlight_ids: [${data.highlights.map((h) => h.id).join(", ")}]`);
+	}
 
 	return lines.join("\n");
 }

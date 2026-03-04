@@ -4,6 +4,7 @@ import type InoreaderSyncPlugin from "./main";
 export type SyncSource = "starred" | "annotated" | "tagged" | "all";
 export type NoteType = "daily" | "weekly";
 export type UpdateBehavior = "append" | "overwrite";
+export type InsertPosition = "append" | "prepend";
 
 export interface InoreaderSyncSettings {
 	// Auth
@@ -25,6 +26,7 @@ export interface InoreaderSyncSettings {
 	filenameTemplate: string;
 	articleTemplate: string;
 	includeContent: boolean;
+	highlightInsertPosition: InsertPosition;
 	frontmatterFields: string[];
 
 	// Daily/weekly notes
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	filenameTemplate: "{{title}}",
 	articleTemplate: "",
 	includeContent: false,
+	highlightInsertPosition: "append",
 	frontmatterFields: ["title", "author", "url", "published", "feed", "tags"],
 
 	appendToPeriodicNote: false,
@@ -274,6 +277,20 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.filenameTemplate)
 					.onChange(async (value) => {
 						this.plugin.settings.filenameTemplate = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName("New highlight position")
+			.setDesc("Where to insert new highlights when re-syncing an existing article")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("append", "Append to end")
+					.addOption("prepend", "Prepend to top")
+					.setValue(this.plugin.settings.highlightInsertPosition)
+					.onChange(async (value: string) => {
+						this.plugin.settings.highlightInsertPosition = value as InsertPosition;
 						await this.plugin.saveSettings();
 					}),
 			);

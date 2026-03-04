@@ -205,12 +205,14 @@ export class SyncEngine {
 
 		const existingContent = await this.app.vault.read(file);
 
-		// Find existing highlight IDs
+		// Extract existing highlight IDs from frontmatter
 		const existingHlIds = new Set<number>();
-		const hlIdRegex = /%% hl:(\d+) %%/g;
-		let match;
-		while ((match = hlIdRegex.exec(existingContent)) !== null) {
-			existingHlIds.add(parseInt(match[1], 10));
+		const hlIdsMatch = existingContent.match(/^highlight_ids:\s*\[([^\]]*)\]/m);
+		if (hlIdsMatch) {
+			const ids = hlIdsMatch[1].split(",").map((s) => parseInt(s.trim(), 10));
+			for (const id of ids) {
+				if (!isNaN(id)) existingHlIds.add(id);
+			}
 		}
 
 		const newHighlights = data.highlights.filter(
@@ -223,19 +225,31 @@ export class SyncEngine {
 			.map((h) => renderHighlightBlock(h))
 			.join("\n\n");
 
-		const SECTION_END = "%% /inoreader-highlights %%";
-		const insertionPoint = existingContent.indexOf(SECTION_END);
-
-		if (insertionPoint === -1) {
-			await this.app.vault.modify(file, existingContent + "\n\n" + rendered);
+		// Update highlight_ids in frontmatter
+		const allIds = [...existingHlIds, ...newHighlights.map((h) => h.id)];
+		const newIdsLine = `highlight_ids: [${allIds.join(", ")}]`;
+		let updated = existingContent;
+		if (hlIdsMatch) {
+			updated = updated.replace(/^highlight_ids:\s*\[([^\]]*)\]/m, newIdsLine);
 		} else {
-			const updated =
-				existingContent.slice(0, insertionPoint) +
-				rendered +
-				"\n\n" +
-				existingContent.slice(insertionPoint);
-			await this.app.vault.modify(file, updated);
+			// Insert highlight_ids before the closing ---
+			const fmEnd = updated.indexOf("\n---", 1);
+			if (fmEnd !== -1) {
+				updated = updated.slice(0, fmEnd) + "\n" + newIdsLine + updated.slice(fmEnd);
+			}
 		}
+
+		// Insert highlights based on position setting
+		const fmEndFull = updated.indexOf("\n---", 1);
+		const bodyStart = fmEndFull !== -1 ? updated.indexOf("\n", fmEndFull + 1) + 1 : 0;
+
+		if (this.settings.highlightInsertPosition === "prepend") {
+			updated = updated.slice(0, bodyStart) + "\n" + rendered + "\n" + updated.slice(bodyStart);
+		} else {
+			updated = updated.trimEnd() + "\n\n" + rendered + "\n";
+		}
+
+		await this.app.vault.modify(file, updated);
 	}
 
 	// --- Periodic Note Appending ---
