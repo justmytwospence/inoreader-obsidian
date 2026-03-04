@@ -16,9 +16,9 @@ export interface InoreaderSyncSettings {
 
 	// Sync source
 	syncAnnotations: boolean;
+	syncTagsEnabled: boolean;
 	syncTags: string[];
 	includeAnnotations: boolean;
-	onlyHighlighted: boolean;
 
 	// Article files
 	articleFolder: string;
@@ -55,9 +55,9 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	isConnected: false,
 
 	syncAnnotations: true,
+	syncTagsEnabled: false,
 	syncTags: [],
 	includeAnnotations: true,
-	onlyHighlighted: true,
 
 	articleFolder: "Inoreader",
 	filenameTemplate: "{{title}}",
@@ -204,59 +204,62 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.syncAnnotations = value;
 						await this.plugin.saveSettings();
+						this.display();
 					}),
 			);
 
-		// Tag selection
-		new Setting(containerEl)
-			.setName("Sync tagged articles")
-			.setDesc("Select tags to sync -- each tag gets its own subfolder");
-
-		const tagContainer = containerEl.createDiv("tag-selection-container");
-		if (this.plugin.settings.isConnected) {
-			this.renderTagToggles(tagContainer);
-		} else {
-			new Setting(tagContainer)
-				.setName("Tag names")
-				.setDesc("Connect to Inoreader to see your tags, or enter tag names manually (one per line)")
-				.addTextArea((text) => {
-					text
-						.setPlaceholder("Read Later\nResearch")
-						.setValue(this.plugin.settings.syncTags.join("\n"))
+		if (this.plugin.settings.syncAnnotations) {
+			new Setting(containerEl)
+				.setName("Include annotations")
+				.setDesc("Include highlight text and notes in article files (requires Inoreader Pro)")
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.includeAnnotations)
 						.onChange(async (value) => {
-							this.plugin.settings.syncTags = value
-								.split("\n")
-								.map((t) => t.trim())
-								.filter((t) => t.length > 0);
+							this.plugin.settings.includeAnnotations = value;
 							await this.plugin.saveSettings();
-						});
-					text.inputEl.rows = 5;
-				});
+						}),
+				);
 		}
 
 		new Setting(containerEl)
-			.setName("Only sync highlighted articles")
-			.setDesc("When enabled, only articles with at least one highlight or annotation are synced")
+			.setName("Sync tagged articles")
+			.setDesc("Sync articles by tag -- each tag gets its own subfolder")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.onlyHighlighted)
+					.setValue(this.plugin.settings.syncTagsEnabled)
 					.onChange(async (value) => {
-						this.plugin.settings.onlyHighlighted = value;
+						this.plugin.settings.syncTagsEnabled = value;
 						await this.plugin.saveSettings();
+						this.display();
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName("Include annotations")
-			.setDesc("Fetch highlights and notes (requires Inoreader Pro)")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.includeAnnotations)
-					.onChange(async (value) => {
-						this.plugin.settings.includeAnnotations = value;
-						await this.plugin.saveSettings();
-					}),
-			);
+		if (this.plugin.settings.syncTagsEnabled) {
+			containerEl.createEl("h3", { text: "Your Inoreader tags" });
+
+			const tagContainer = containerEl.createDiv("tag-selection-container");
+			if (this.plugin.settings.isConnected) {
+				this.renderTagToggles(tagContainer);
+			} else {
+				new Setting(tagContainer)
+					.setName("Tag names")
+					.setDesc("Connect to Inoreader to see your tags, or enter tag names manually (one per line)")
+					.addTextArea((text) => {
+						text
+							.setPlaceholder("Read Later\nResearch")
+							.setValue(this.plugin.settings.syncTags.join("\n"))
+							.onChange(async (value) => {
+								this.plugin.settings.syncTags = value
+									.split("\n")
+									.map((t) => t.trim())
+									.filter((t) => t.length > 0);
+								await this.plugin.saveSettings();
+							});
+						text.inputEl.rows = 5;
+					});
+			}
+		}
 
 		// --- Article Files ---
 		containerEl.createEl("h2", { text: "Article Files" });

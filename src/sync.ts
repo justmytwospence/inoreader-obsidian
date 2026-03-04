@@ -24,7 +24,7 @@ export class SyncEngine {
 	}
 
 	async sync(fullResync: boolean = false): Promise<number> {
-		if (!this.settings.syncAnnotations && this.settings.syncTags.length === 0) {
+		if (!this.settings.syncAnnotations && !(this.settings.syncTagsEnabled && this.settings.syncTags.length > 0)) {
 			new Notice("Inoreader: Please enable annotations or select tags in settings");
 			return 0;
 		}
@@ -53,7 +53,8 @@ export class SyncEngine {
 		}
 
 		// Sync each selected tag
-		for (const tagName of this.settings.syncTags) {
+		const tagsToSync = this.settings.syncTagsEnabled ? this.settings.syncTags : [];
+		for (const tagName of tagsToSync) {
 			const folderName = sanitizeFilename(tagName);
 			const folder = normalizePath(`${this.settings.articleFolder}/tags/${folderName}`);
 			try {
@@ -93,7 +94,7 @@ export class SyncEngine {
 		try {
 			articles = await this.api.fetchArticles(streamId, {
 				sinceTimestamp: sinceTimestamp || undefined,
-				annotations: this.settings.includeAnnotations || this.settings.onlyHighlighted,
+				annotations: this.settings.includeAnnotations,
 			});
 		} catch (e) {
 			const msg = (e as Error).message;
@@ -113,13 +114,6 @@ export class SyncEngine {
 
 		// Filter already processed in this run (cross-source dedup)
 		toProcess = toProcess.filter((a) => !crossDedup.has(a.id));
-
-		// Filter to only highlighted if setting is on
-		if (this.settings.onlyHighlighted) {
-			toProcess = toProcess.filter(
-				(a) => a.annotations && a.annotations.length > 0,
-			);
-		}
 
 		if (toProcess.length === 0) return 0;
 
