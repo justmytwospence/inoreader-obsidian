@@ -32,12 +32,13 @@ export class SyncEngine {
 		const sinceTimestamp = fullResync ? 0 : this.settings.lastSyncTimestamp;
 		const processedInRun = new Set<string>();
 		let totalSynced = 0;
+		let hadErrors = false;
 
 		new Notice("Inoreader: Fetching articles...");
 
 		// Sync annotated articles
 		if (this.settings.syncAnnotations) {
-			const folder = normalizePath(`${this.settings.articleFolder}/annotations`);
+			const folder = normalizePath(`${this.settings.articleFolder}/Annotations`);
 			try {
 				totalSynced += await this.syncSingleStream(
 					"user/-/state/com.google/annotated",
@@ -48,8 +49,9 @@ export class SyncEngine {
 					this.settings.appendToPeriodicNote,
 				);
 			} catch (e) {
+				hadErrors = true;
 				console.error("Inoreader: failed to sync annotations", e);
-				new Notice("Inoreader: Failed to sync annotations");
+				new Notice("Inoreader: " + (e as Error).message);
 			}
 		}
 
@@ -57,7 +59,7 @@ export class SyncEngine {
 		const tagsToSync = this.settings.syncTagsEnabled ? this.settings.syncTags : [];
 		for (const tagName of tagsToSync) {
 			const folderName = sanitizeFilename(tagName);
-			const folder = normalizePath(`${this.settings.articleFolder}/tags/${folderName}`);
+			const folder = normalizePath(`${this.settings.articleFolder}/Tags/${folderName}`);
 			try {
 				totalSynced += await this.syncSingleStream(
 					`user/-/label/${tagName}`,
@@ -68,18 +70,21 @@ export class SyncEngine {
 					false,
 				);
 			} catch (e) {
+				hadErrors = true;
 				console.error(`Inoreader: failed to sync tag "${tagName}"`, e);
-				new Notice(`Inoreader: Failed to sync tag "${tagName}"`);
+				new Notice("Inoreader: " + (e as Error).message);
 			}
 		}
 
-		// Update sync state
-		this.settings.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+		// Only update timestamp if all streams succeeded
+		if (!hadErrors) {
+			this.settings.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+		}
 		await this.saveSettings();
 
-		if (totalSynced === 0) {
+		if (totalSynced === 0 && !hadErrors) {
 			new Notice("Inoreader: No new articles to sync");
-		} else {
+		} else if (totalSynced > 0) {
 			new Notice(`Inoreader: Synced ${totalSynced} articles`);
 		}
 		return totalSynced;
@@ -101,6 +106,9 @@ export class SyncEngine {
 			});
 		} catch (e) {
 			const msg = (e as Error).message;
+			if (msg.includes("429")) {
+				throw new Error("Rate limited by Inoreader. Please wait a few minutes and try again.");
+			}
 			if (msg.includes("403") || msg.includes("401")) {
 				throw new Error("Authentication failed. Try reconnecting in settings.");
 			}
