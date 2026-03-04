@@ -1,11 +1,15 @@
 {
   "name": "inoreader-sync",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Sync highlights, annotations, and articles from Inoreader into your Obsidian vault.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justmytwospence/inoreader-obsidian"
   },
   "keywords": [],
   "author": "Spencer Boucher",

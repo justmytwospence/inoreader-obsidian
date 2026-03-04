@@ -95,7 +95,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		containerEl.addClass("inoreader-sync-settings");
 
 		// --- Connection ---
-		containerEl.createEl("h2", { text: "Connection" });
+		new Setting(containerEl).setName("Connection").setHeading();
 
 		const statusEl = containerEl.createDiv("connection-status");
 		if (this.plugin.settings.isConnected) {
@@ -193,7 +193,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			);
 
 		// --- Sync Source ---
-		containerEl.createEl("h2", { text: "Sync Source" });
+		new Setting(containerEl).setName("Sync source").setHeading();
 
 		new Setting(containerEl)
 			.setName("Sync annotated articles")
@@ -238,7 +238,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.syncTagsEnabled) {
 			const tagSub = containerEl.createDiv("subsettings");
-			tagSub.createEl("h3", { text: "Your Inoreader tags" });
+			new Setting(tagSub).setName("Your Inoreader tags").setHeading();
 
 			const tagContainer = tagSub.createDiv("tag-selection-container");
 			if (this.plugin.settings.isConnected) {
@@ -264,7 +264,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		}
 
 		// --- Article Files ---
-		containerEl.createEl("h2", { text: "Article Files" });
+		new Setting(containerEl).setName("Article files").setHeading();
 
 		new Setting(containerEl)
 			.setName("Output folder")
@@ -365,7 +365,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		}
 
 		// --- Periodic Notes ---
-		containerEl.createEl("h2", { text: "Periodic Notes" });
+		new Setting(containerEl).setName("Periodic notes").setHeading();
 
 		new Setting(containerEl)
 			.setName("Append to periodic notes")
@@ -456,7 +456,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		}
 
 		// --- Sync Behavior ---
-		containerEl.createEl("h2", { text: "Sync Behavior" });
+		new Setting(containerEl).setName("Sync behavior").setHeading();
 
 		new Setting(containerEl)
 			.setName("Sync on startup")
@@ -505,7 +505,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			);
 
 		// --- Sync State ---
-		containerEl.createEl("h2", { text: "Sync State" });
+		new Setting(containerEl).setName("Sync state").setHeading();
 
 		const lastSync = this.plugin.settings.lastSyncTimestamp;
 		const lastSyncStr = lastSync
