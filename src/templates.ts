@@ -14,16 +14,11 @@ const DEFAULT_ARTICLE_TEMPLATE = `---
 {{frontmatter}}
 ---
 
-# {{title}}
-
-**Author**: {{author}} | **Source**: [{{feed_title}}]({{feed_url}}) | **Date**: {{published_date}}
-**Link**: [{{url}}]({{url}})
-
-<!-- inoreader-highlights -->
+%% inoreader-highlights %%
 
 {{highlights}}
 
-<!-- /inoreader-highlights -->
+%% /inoreader-highlights %%
 {{#if content}}
 
 ---
@@ -67,7 +62,7 @@ export function renderArticleFile(data: ArticleData, settings: TemplateSettings)
 }
 
 export function renderHighlightBlock(h: HighlightData): string {
-	let block = `<!-- hl:${h.id} -->\n> ${h.text}`;
+	let block = `%% hl:${h.id} %%\n> ${h.text}`;
 	if (h.note) {
 		block += `\n>\n> **Note**: ${h.note}`;
 	}

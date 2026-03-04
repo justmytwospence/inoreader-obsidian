@@ -207,7 +207,7 @@ export class SyncEngine {
 
 		// Find existing highlight IDs
 		const existingHlIds = new Set<number>();
-		const hlIdRegex = /<!-- hl:(\d+) -->/g;
+		const hlIdRegex = /%% hl:(\d+) %%/g;
 		let match;
 		while ((match = hlIdRegex.exec(existingContent)) !== null) {
 			existingHlIds.add(parseInt(match[1], 10));
@@ -223,7 +223,7 @@ export class SyncEngine {
 			.map((h) => renderHighlightBlock(h))
 			.join("\n\n");
 
-		const SECTION_END = "<!-- /inoreader-highlights -->";
+		const SECTION_END = "%% /inoreader-highlights %%";
 		const insertionPoint = existingContent.indexOf(SECTION_END);
 
 		if (insertionPoint === -1) {
