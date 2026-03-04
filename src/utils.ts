@@ -57,7 +57,12 @@ export function formatDate(date: Date, format: string): string {
 	const weekStr = String(week).padStart(2, "0");
 	const quarter = String(Math.floor(date.getMonth() / 3) + 1);
 
-	let result = format;
+	// Extract bracket-escaped literals before token replacement
+	const literals: string[] = [];
+	let result = format.replace(/\[([^\]]*)\]/g, (_, content) => {
+		literals.push(content);
+		return `\x00${literals.length - 1}\x00`;
+	});
 
 	// ISO week-numbering year (must replace before YYYY to avoid partial match)
 	if (result.includes("gggg")) {
@@ -75,6 +80,9 @@ export function formatDate(date: Date, format: string): string {
 
 	// Quarter
 	result = result.replace("Q", quarter);
+
+	// Restore bracket-escaped literals
+	result = result.replace(/\x00(\d+)\x00/g, (_, idx) => literals[parseInt(idx, 10)]);
 
 	return result;
 }
