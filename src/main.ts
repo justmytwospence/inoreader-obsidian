@@ -186,7 +186,24 @@ export default class InoreaderSyncPlugin extends Plugin {
 	// --- Settings ---
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loaded = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+
+		// Migrate syncTag -> syncTags (pre-0.9.0)
+		if (loaded && typeof (loaded as any).syncTag === "string" && (loaded as any).syncTag.trim()) {
+			if (!this.settings.syncTags || this.settings.syncTags.length === 0) {
+				this.settings.syncTags = [(loaded as any).syncTag.trim()];
+			}
+		}
+		// Migrate syncSource -> syncAnnotations (pre-0.9.0)
+		if (loaded && (loaded as any).syncSource) {
+			const old = (loaded as any).syncSource;
+			if (old === "annotated") {
+				this.settings.syncAnnotations = true;
+			} else if (old === "tagged") {
+				this.settings.syncAnnotations = false;
+			}
+		}
 	}
 
 	async saveSettings(): Promise<void> {

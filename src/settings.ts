@@ -1,7 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type InoreaderSyncPlugin from "./main";
 
-export type SyncSource = "starred" | "annotated" | "tagged" | "all";
 export type NoteType = "daily" | "weekly";
 export type UpdateBehavior = "append" | "overwrite";
 export type InsertPosition = "append" | "prepend";
@@ -16,8 +15,8 @@ export interface InoreaderSyncSettings {
 	isConnected: boolean;
 
 	// Sync source
-	syncSource: SyncSource;
-	syncTag: string;
+	syncAnnotations: boolean;
+	syncTags: string[];
 	includeAnnotations: boolean;
 	onlyHighlighted: boolean;
 
@@ -55,8 +54,8 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	tokenExpiresAt: 0,
 	isConnected: false,
 
-	syncSource: "annotated",
-	syncTag: "",
+	syncAnnotations: true,
+	syncTags: [],
 	includeAnnotations: true,
 	onlyHighlighted: true,
 
@@ -197,35 +196,42 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		containerEl.createEl("h2", { text: "Sync Source" });
 
 		new Setting(containerEl)
-			.setName("Source")
-			.setDesc("Which articles to sync from Inoreader")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("annotated", "Annotated articles")
-					.addOption("starred", "Starred articles")
-					.addOption("tagged", "Tagged articles")
-					.addOption("all", "All articles (reading list)")
-					.setValue(this.plugin.settings.syncSource)
-					.onChange(async (value: string) => {
-						this.plugin.settings.syncSource = value as SyncSource;
+			.setName("Sync annotated articles")
+			.setDesc("Sync articles you've highlighted or annotated in Inoreader")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.syncAnnotations)
+					.onChange(async (value) => {
+						this.plugin.settings.syncAnnotations = value;
 						await this.plugin.saveSettings();
-						this.display();
 					}),
 			);
 
-		if (this.plugin.settings.syncSource === "tagged") {
-			new Setting(containerEl)
-				.setName("Tag name")
-				.setDesc("The Inoreader tag/label to sync")
-				.addText((text) =>
+		// Tag selection
+		new Setting(containerEl)
+			.setName("Sync tagged articles")
+			.setDesc("Select tags to sync -- each tag gets its own subfolder");
+
+		const tagContainer = containerEl.createDiv("tag-selection-container");
+		if (this.plugin.settings.isConnected) {
+			this.renderTagToggles(tagContainer);
+		} else {
+			new Setting(tagContainer)
+				.setName("Tag names")
+				.setDesc("Connect to Inoreader to see your tags, or enter tag names manually (one per line)")
+				.addTextArea((text) => {
 					text
-						.setPlaceholder("e.g. Read Later")
-						.setValue(this.plugin.settings.syncTag)
+						.setPlaceholder("Read Later\nResearch")
+						.setValue(this.plugin.settings.syncTags.join("\n"))
 						.onChange(async (value) => {
-							this.plugin.settings.syncTag = value;
+							this.plugin.settings.syncTags = value
+								.split("\n")
+								.map((t) => t.trim())
+								.filter((t) => t.length > 0);
 							await this.plugin.saveSettings();
-						}),
-				);
+						});
+					text.inputEl.rows = 5;
+				});
 		}
 
 		new Setting(containerEl)
@@ -517,5 +523,71 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						this.display();
 					}),
 			);
+	}
+
+	private async renderTagToggles(container: HTMLElement): Promise<void> {
+		const loadingEl = container.createEl("p", { text: "Loading tags..." });
+
+		try {
+			const response = await this.plugin.api.getTagList();
+			loadingEl.remove();
+
+			const userTags = response.tags
+				.filter((t) => t.id.includes("/label/"))
+				.map((t) => ({
+					id: t.id,
+					label: t.id.split("/label/").pop() ?? t.id,
+				}));
+
+			if (userTags.length === 0) {
+				container.createEl("p", {
+					text: "No tags found in your Inoreader account.",
+					cls: "setting-item-description",
+				});
+				return;
+			}
+
+			const selectedSet = new Set(this.plugin.settings.syncTags);
+
+			for (const tag of userTags) {
+				new Setting(container)
+					.setName(`  ${tag.label}`)
+					.addToggle((toggle) =>
+						toggle
+							.setValue(selectedSet.has(tag.label))
+							.onChange(async (value) => {
+								if (value) {
+									if (!this.plugin.settings.syncTags.includes(tag.label)) {
+										this.plugin.settings.syncTags.push(tag.label);
+									}
+								} else {
+									this.plugin.settings.syncTags =
+										this.plugin.settings.syncTags.filter((t) => t !== tag.label);
+								}
+								await this.plugin.saveSettings();
+							}),
+					);
+			}
+		} catch (e) {
+			loadingEl.remove();
+			console.error("Inoreader: Failed to fetch tags", e);
+
+			new Setting(container)
+				.setName("Tag names")
+				.setDesc("Could not fetch tags. Enter tag names manually, one per line.")
+				.addTextArea((text) => {
+					text
+						.setPlaceholder("Read Later\nResearch")
+						.setValue(this.plugin.settings.syncTags.join("\n"))
+						.onChange(async (value) => {
+							this.plugin.settings.syncTags = value
+								.split("\n")
+								.map((t) => t.trim())
+								.filter((t) => t.length > 0);
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.rows = 5;
+				});
+		}
 	}
 }

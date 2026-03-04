@@ -24,16 +24,76 @@ export class SyncEngine {
 	}
 
 	async sync(fullResync: boolean = false): Promise<number> {
+		if (!this.settings.syncAnnotations && this.settings.syncTags.length === 0) {
+			new Notice("Inoreader: Please enable annotations or select tags in settings");
+			return 0;
+		}
+
 		const sinceTimestamp = fullResync ? 0 : this.settings.lastSyncTimestamp;
-		const streamId = this.getStreamId();
+		const processedInRun = new Set<string>();
+		let totalSynced = 0;
 
 		new Notice("Inoreader: Fetching articles...");
 
+		// Sync annotated articles
+		if (this.settings.syncAnnotations) {
+			const folder = normalizePath(`${this.settings.articleFolder}/annotations`);
+			try {
+				totalSynced += await this.syncSingleStream(
+					"user/-/state/com.google/annotated",
+					folder,
+					sinceTimestamp,
+					fullResync,
+					processedInRun,
+				);
+			} catch (e) {
+				console.error("Inoreader: failed to sync annotations", e);
+				new Notice("Inoreader: Failed to sync annotations");
+			}
+		}
+
+		// Sync each selected tag
+		for (const tagName of this.settings.syncTags) {
+			const folderName = sanitizeFilename(tagName);
+			const folder = normalizePath(`${this.settings.articleFolder}/tags/${folderName}`);
+			try {
+				totalSynced += await this.syncSingleStream(
+					`user/-/label/${tagName}`,
+					folder,
+					sinceTimestamp,
+					fullResync,
+					processedInRun,
+				);
+			} catch (e) {
+				console.error(`Inoreader: failed to sync tag "${tagName}"`, e);
+				new Notice(`Inoreader: Failed to sync tag "${tagName}"`);
+			}
+		}
+
+		// Update sync state
+		this.settings.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+		await this.saveSettings();
+
+		if (totalSynced === 0) {
+			new Notice("Inoreader: No new articles to sync");
+		} else {
+			new Notice(`Inoreader: Synced ${totalSynced} articles`);
+		}
+		return totalSynced;
+	}
+
+	private async syncSingleStream(
+		streamId: string,
+		folderPath: string,
+		sinceTimestamp: number,
+		fullResync: boolean,
+		crossDedup: Set<string>,
+	): Promise<number> {
 		let articles: InoreaderArticle[];
 		try {
 			articles = await this.api.fetchArticles(streamId, {
 				sinceTimestamp: sinceTimestamp || undefined,
-				annotations: this.settings.includeAnnotations,
+				annotations: this.settings.includeAnnotations || this.settings.onlyHighlighted,
 			});
 		} catch (e) {
 			const msg = (e as Error).message;
@@ -43,16 +103,16 @@ export class SyncEngine {
 			throw e;
 		}
 
-		if (articles.length === 0) {
-			new Notice("Inoreader: No new articles to sync");
-			return 0;
-		}
+		if (articles.length === 0) return 0;
 
-		// Filter already-synced
+		// Filter already-synced (persistent)
 		const syncedSet = new Set(this.settings.syncedArticleIds);
 		let toProcess = fullResync
 			? articles
 			: articles.filter((a) => !syncedSet.has(a.id));
+
+		// Filter already processed in this run (cross-source dedup)
+		toProcess = toProcess.filter((a) => !crossDedup.has(a.id));
 
 		// Filter to only highlighted if setting is on
 		if (this.settings.onlyHighlighted) {
@@ -61,51 +121,31 @@ export class SyncEngine {
 			);
 		}
 
-		if (toProcess.length === 0) {
-			new Notice("Inoreader: No new articles to sync");
-			return 0;
-		}
-
-		new Notice(`Inoreader: Processing ${toProcess.length} articles...`);
+		if (toProcess.length === 0) return 0;
 
 		let synced = 0;
 		for (const article of toProcess) {
 			try {
 				const data = this.transformArticle(article);
-				await this.writeArticleFile(data);
+				await this.writeArticleFile(data, folderPath);
 				if (this.settings.appendToPeriodicNote) {
 					await this.appendToPeriodicNote(data);
 				}
+				crossDedup.add(article.id);
 				synced++;
 			} catch (e) {
 				console.error(`Inoreader: failed to process "${article.title}"`, e);
 			}
 		}
 
-		// Update sync state
-		this.settings.lastSyncTimestamp = Math.floor(Date.now() / 1000);
+		// Update persistent dedup list
 		const newIds = toProcess.map((a) => a.id);
 		this.settings.syncedArticleIds = [
 			...newIds,
 			...this.settings.syncedArticleIds,
 		].slice(0, 5000);
-		await this.saveSettings();
 
-		new Notice(`Inoreader: Synced ${synced} articles`);
 		return synced;
-	}
-
-	private getStreamId(): string {
-		switch (this.settings.syncSource) {
-			case "starred":
-				return "user/-/state/com.google/starred";
-			case "annotated":
-				return "user/-/state/com.google/annotated";
-			case "tagged":
-				return `user/-/label/${this.settings.syncTag}`;
-			case "all":
-				return "user/-/state/com.google/reading-list";
-		}
 	}
 
 	private transformArticle(article: InoreaderArticle): ArticleData {
@@ -152,10 +192,10 @@ export class SyncEngine {
 
 	// --- Article File Writing ---
 
-	private async writeArticleFile(data: ArticleData): Promise<void> {
+	private async writeArticleFile(data: ArticleData, folder?: string): Promise<void> {
 		const rawFilename = this.renderFilename(this.settings.filenameTemplate, data);
 		const filename = sanitizeFilename(rawFilename);
-		const folderPath = normalizePath(this.settings.articleFolder);
+		const folderPath = normalizePath(folder ?? this.settings.articleFolder);
 		let filePath = normalizePath(`${folderPath}/${filename}.md`);
 
 		await this.ensureFolderExists(folderPath);
@@ -207,7 +247,7 @@ export class SyncEngine {
 
 		// Extract existing highlight IDs from frontmatter
 		const existingHlIds = new Set<number>();
-		const hlIdsMatch = existingContent.match(/^highlight_ids:\s*\[([^\]]*)\]/m);
+		const hlIdsMatch = existingContent.match(/^highlight_ids:\s*\[([\s\S]*?)\]/m);
 		if (hlIdsMatch) {
 			const ids = hlIdsMatch[1].split(",").map((s) => parseInt(s.trim(), 10));
 			for (const id of ids) {
@@ -230,7 +270,7 @@ export class SyncEngine {
 		const newIdsLine = `highlight_ids: [${allIds.join(", ")}]`;
 		let updated = existingContent;
 		if (hlIdsMatch) {
-			updated = updated.replace(/^highlight_ids:\s*\[([^\]]*)\]/m, newIdsLine);
+			updated = updated.replace(/^highlight_ids:\s*\[([\s\S]*?)\]/m, newIdsLine);
 		} else {
 			// Insert highlight_ids before the closing ---
 			const fmEnd = updated.indexOf("\n---", 1);
@@ -270,7 +310,7 @@ export class SyncEngine {
 			const content = await this.app.vault.read(existingFile);
 
 			// Dedup by URL
-			if (data.url && content.includes(data.url)) return;
+			if (data.url && content.includes(`](${data.url})`)) return;
 
 			const headingIdx = content.indexOf(heading);
 

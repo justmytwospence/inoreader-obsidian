@@ -112,9 +112,10 @@ function applyTemplate(
 					/\{\{#if this\.note\}\}([\s\S]*?)\{\{\/if\}\}/g,
 					h.note ? "$1" : "",
 				);
-				return rendered;
+				return rendered.trim();
 			})
-			.join("\n");
+			.filter((s) => s.length > 0)
+			.join("\n\n");
 	});
 
 	// Handle {{#if VAR}} conditionals
