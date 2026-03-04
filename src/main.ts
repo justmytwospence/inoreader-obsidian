@@ -124,7 +124,7 @@ export default class InoreaderSyncPlugin extends Plugin {
 
 	// --- Sync ---
 
-	private async runSync(fullResync: boolean): Promise<void> {
+	async runSync(fullResync: boolean): Promise<void> {
 		if (!this.settings.isConnected) {
 			new Notice("Inoreader: Not connected. Configure in settings.");
 			return;

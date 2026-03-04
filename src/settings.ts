@@ -152,6 +152,44 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					}),
 			);
 
+		// --- Manual Sync ---
+		new Setting(containerEl)
+			.setName("Sync now")
+			.setDesc("Manually trigger a sync with Inoreader")
+			.addButton((btn) =>
+				btn
+					.setButtonText("Sync")
+					.setCta()
+					.setDisabled(!this.plugin.settings.isConnected)
+					.onClick(async () => {
+						btn.setDisabled(true);
+						btn.setButtonText("Syncing...");
+						try {
+							await this.plugin.runSync(false);
+						} finally {
+							btn.setDisabled(false);
+							btn.setButtonText("Sync");
+							this.display();
+						}
+					}),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText("Full resync")
+					.setDisabled(!this.plugin.settings.isConnected)
+					.onClick(async () => {
+						btn.setDisabled(true);
+						btn.setButtonText("Resyncing...");
+						try {
+							await this.plugin.runSync(true);
+						} finally {
+							btn.setDisabled(false);
+							btn.setButtonText("Full resync");
+							this.display();
+						}
+					}),
+			);
+
 		// --- Sync Source ---
 		containerEl.createEl("h2", { text: "Sync Source" });
 
