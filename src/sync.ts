@@ -1,7 +1,7 @@
 import { App, Notice, TFile, normalizePath } from "obsidian";
 import { InoreaderAPI } from "./api";
 import { InoreaderArticle, ArticleData, HighlightData } from "./types";
-import { InoreaderSyncSettings } from "./settings";
+import { InoreaderSyncSettings, NOTE_TYPE_DATE_FORMATS } from "./settings";
 import { TemplateSettings, renderArticleFile, renderHighlightBlock, renderDailyNoteEntry } from "./templates";
 import { sanitizeFilename, htmlToMarkdown, formatDate, shortHash } from "./utils";
 
@@ -335,57 +335,10 @@ export class SyncEngine {
 		}
 	}
 
-	private static readonly NOTE_TYPE_DEFAULTS: Record<string, string> = {
-		daily: "YYYY-MM-DD",
-		weekly: "gggg-[W]ww",
-		monthly: "YYYY-MM",
-		quarterly: "YYYY-[Q]Q",
-		yearly: "YYYY",
-	};
-
 	private resolvePeriodicNoteConfig(): { folder: string; format: string } {
-		const noteType = this.settings.periodicNoteType;
-		const defaultFormat = SyncEngine.NOTE_TYPE_DEFAULTS[noteType] ?? "YYYY-MM-DD";
-
-		// If user specified explicit values, use them
-		if (this.settings.periodicNoteFolder || this.settings.periodicNoteDateFormat !== "YYYY-MM-DD") {
-			return {
-				folder: this.settings.periodicNoteFolder,
-				format: this.settings.periodicNoteDateFormat || defaultFormat,
-			};
-		}
-
-		// Try to read from Periodic Notes community plugin
-		const periodicNotes = (this.app as any).plugins?.plugins?.["periodic-notes"];
-		if (periodicNotes?.enabled) {
-			const pnSettings = periodicNotes.settings;
-			const pnType = pnSettings?.[noteType];
-			if (pnType?.enabled) {
-				return {
-					folder: pnType.folder || "",
-					format: pnType.format || defaultFormat,
-				};
-			}
-		}
-
-		// Try to read from Daily Notes core plugin
-		if (noteType === "daily") {
-			const dailyNotes = (this.app as any).internalPlugins?.plugins?.["daily-notes"];
-			if (dailyNotes?.enabled) {
-				const config = dailyNotes.instance?.options;
-				if (config) {
-					return {
-						folder: config.folder || "",
-						format: config.format || defaultFormat,
-					};
-				}
-			}
-		}
-
-		// Defaults
 		return {
-			folder: "",
-			format: defaultFormat,
+			folder: this.settings.periodicNoteFolder,
+			format: this.settings.periodicNoteDateFormat || NOTE_TYPE_DATE_FORMATS[this.settings.periodicNoteType] || "YYYY-MM-DD",
 		};
 	}
 

@@ -5,6 +5,14 @@ export type NoteType = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 export type UpdateBehavior = "append" | "overwrite";
 export type InsertPosition = "append" | "prepend";
 
+export const NOTE_TYPE_DATE_FORMATS: Record<NoteType, string> = {
+	daily: "YYYY-MM-DD",
+	weekly: "gggg-[W]ww",
+	monthly: "YYYY-MM",
+	quarterly: "YYYY-[Q]Q",
+	yearly: "YYYY",
+};
+
 export interface InoreaderSyncSettings {
 	// Auth
 	clientId: string;
@@ -394,17 +402,19 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						.addOption("yearly", "Yearly notes")
 						.setValue(this.plugin.settings.periodicNoteType)
 						.onChange(async (value: string) => {
-							this.plugin.settings.periodicNoteType = value as NoteType;
+							const noteType = value as NoteType;
+							this.plugin.settings.periodicNoteType = noteType;
+							this.plugin.settings.periodicNoteDateFormat = NOTE_TYPE_DATE_FORMATS[noteType];
 							await this.plugin.saveSettings();
+							this.display();
 						}),
 				);
 
 			new Setting(periodicSub)
 				.setName("Folder")
-				.setDesc("Leave empty to auto-detect from Daily Notes or Periodic Notes plugin")
+				.setDesc("Folder where periodic notes are stored")
 				.addText((text) =>
 					text
-						.setPlaceholder("Auto-detect")
 						.setValue(this.plugin.settings.periodicNoteFolder)
 						.onChange(async (value) => {
 							this.plugin.settings.periodicNoteFolder = value;
@@ -414,10 +424,10 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 
 			new Setting(periodicSub)
 				.setName("Date format")
-				.setDesc("Leave empty to auto-detect. Tokens: YYYY, gggg (ISO week year), MM, DD, WW/ww, Q")
+				.setDesc("Tokens: YYYY, gggg (ISO week year), MM, DD, WW/ww, Q. Use [brackets] for literals.")
 				.addText((text) =>
 					text
-						.setPlaceholder("YYYY-MM-DD")
+						.setPlaceholder(NOTE_TYPE_DATE_FORMATS[this.plugin.settings.periodicNoteType])
 						.setValue(this.plugin.settings.periodicNoteDateFormat)
 						.onChange(async (value) => {
 							this.plugin.settings.periodicNoteDateFormat = value;
