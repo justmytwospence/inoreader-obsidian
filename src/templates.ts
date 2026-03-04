@@ -28,7 +28,9 @@ const DEFAULT_ARTICLE_TEMPLATE = `---
 const DEFAULT_DAILY_NOTE_ENTRY_TEMPLATE = `### [{{title}}]({{url}})
 
 {{#each highlights}}
+{{#if this.text}}
 > {{this.text}}
+{{/if}}
 {{#if this.note}}
 {{this.note}}
 {{/if}}
@@ -61,11 +63,14 @@ export function renderArticleFile(data: ArticleData, settings: TemplateSettings)
 }
 
 export function renderHighlightBlock(h: HighlightData): string {
-	let block = `> ${h.text}`;
-	if (h.note) {
-		block += `\n\n${h.note}`;
+	const parts: string[] = [];
+	if (h.text) {
+		parts.push(`> ${h.text}`);
 	}
-	return block;
+	if (h.note) {
+		parts.push(h.note);
+	}
+	return parts.join("\n\n");
 }
 
 export function renderDailyNoteEntry(data: ArticleData, settings: TemplateSettings): string {
@@ -104,7 +109,11 @@ function applyTemplate(
 				rendered = rendered.replace(/\{\{this\.note\}\}/g, h.note || "");
 				rendered = rendered.replace(/\{\{this\.id\}\}/g, String(h.id));
 				rendered = rendered.replace(/\{\{this\.addedOn\}\}/g, h.addedOn);
-				// Handle {{#if this.note}} conditionals
+				// Handle {{#if this.X}} conditionals
+				rendered = rendered.replace(
+					/\{\{#if this\.text\}\}([\s\S]*?)\{\{\/if\}\}/g,
+					h.text ? "$1" : "",
+				);
 				rendered = rendered.replace(
 					/\{\{#if this\.note\}\}([\s\S]*?)\{\{\/if\}\}/g,
 					h.note ? "$1" : "",
