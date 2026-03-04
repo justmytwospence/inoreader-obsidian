@@ -42,6 +42,7 @@ export interface InoreaderSyncSettings {
 	periodicNoteFolder: string;
 	periodicNoteDateFormat: string;
 	periodicNoteHeading: string;
+	periodicNoteInsertPosition: InsertPosition;
 	dailyNoteEntryTemplate: string;
 
 	// Sync behavior
@@ -79,6 +80,7 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	periodicNoteFolder: "",
 	periodicNoteDateFormat: "YYYY-MM-DD",
 	periodicNoteHeading: "## Inoreader",
+	periodicNoteInsertPosition: "append",
 	dailyNoteEntryTemplate: "",
 
 	syncOnStartup: false,
@@ -437,13 +439,27 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 
 			new Setting(periodicSub)
 				.setName("Heading")
-				.setDesc("Heading to append entries under in the periodic note")
+				.setDesc("Heading to group entries under. Leave empty to disable.")
 				.addText((text) =>
 					text
-						.setPlaceholder("## Inoreader")
+						.setPlaceholder("None")
 						.setValue(this.plugin.settings.periodicNoteHeading)
 						.onChange(async (value) => {
 							this.plugin.settings.periodicNoteHeading = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(periodicSub)
+				.setName("Insert position")
+				.setDesc("Where to insert new entries in the periodic note")
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOption("append", "Append (end)")
+						.addOption("prepend", "Prepend (beginning)")
+						.setValue(this.plugin.settings.periodicNoteInsertPosition)
+						.onChange(async (value: string) => {
+							this.plugin.settings.periodicNoteInsertPosition = value as InsertPosition;
 							await this.plugin.saveSettings();
 						}),
 				);

@@ -299,7 +299,8 @@ export class SyncEngine {
 		);
 
 		const entry = renderDailyNoteEntry(data, this.getTemplateSettings());
-		const heading = this.settings.periodicNoteHeading;
+		const heading = this.settings.periodicNoteHeading.trim();
+		const prepend = this.settings.periodicNoteInsertPosition === "prepend";
 
 		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 
@@ -309,30 +310,68 @@ export class SyncEngine {
 			// Dedup by URL
 			if (data.url && content.includes(`](${data.url})`)) return;
 
-			const headingIdx = content.indexOf(heading);
+			let updated: string;
 
-			if (headingIdx !== -1) {
-				// Find end of heading line
-				const afterHeading = content.indexOf("\n", headingIdx);
-				const insertAt = afterHeading !== -1 ? afterHeading + 1 : content.length;
-				const updated =
-					content.slice(0, insertAt) +
-					"\n" + entry + "\n" +
-					content.slice(insertAt);
-				await this.app.vault.modify(existingFile, updated);
+			if (heading) {
+				const headingIdx = content.indexOf(heading);
+
+				if (headingIdx !== -1) {
+					const afterHeading = content.indexOf("\n", headingIdx);
+					if (prepend) {
+						// Insert right after heading line
+						const insertAt = afterHeading !== -1 ? afterHeading + 1 : content.length;
+						updated =
+							content.slice(0, insertAt) +
+							"\n" + entry + "\n" +
+							content.slice(insertAt);
+					} else {
+						// Find end of heading section (next heading of same or higher level, or EOF)
+						const headingLevel = heading.match(/^#+/)?.[0].length ?? 2;
+						const sectionEnd = this.findSectionEnd(content, afterHeading !== -1 ? afterHeading + 1 : content.length, headingLevel);
+						updated =
+							content.slice(0, sectionEnd).trimEnd() +
+							"\n\n" + entry + "\n" +
+							content.slice(sectionEnd);
+					}
+				} else {
+					// Heading not found; insert heading + entry
+					if (prepend) {
+						updated = heading + "\n\n" + entry + "\n\n" + content;
+					} else {
+						updated = content + "\n\n" + heading + "\n\n" + entry;
+					}
+				}
 			} else {
-				// Heading not found; append at end
-				await this.app.vault.modify(
-					existingFile,
-					content + "\n\n" + heading + "\n\n" + entry,
-				);
+				// No heading
+				if (prepend) {
+					updated = entry + "\n\n" + content;
+				} else {
+					updated = content.trimEnd() + "\n\n" + entry + "\n";
+				}
 			}
+
+			await this.app.vault.modify(existingFile, updated);
 		} else {
 			// Create new periodic note
 			if (folder) await this.ensureFolderExists(folder);
-			const content = `${heading}\n\n${entry}\n`;
+			const content = heading
+				? `${heading}\n\n${entry}\n`
+				: `${entry}\n`;
 			await this.app.vault.create(filePath, content);
 		}
+	}
+
+	private findSectionEnd(content: string, startAfter: number, headingLevel: number): number {
+		const lines = content.slice(startAfter).split("\n");
+		let offset = startAfter;
+		for (const line of lines) {
+			const match = line.match(/^(#+)\s/);
+			if (match && match[1].length <= headingLevel) {
+				return offset;
+			}
+			offset += line.length + 1;
+		}
+		return content.length;
 	}
 
 	private resolvePeriodicNoteConfig(): { folder: string; format: string } {

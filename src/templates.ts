@@ -25,10 +25,10 @@ const DEFAULT_ARTICLE_TEMPLATE = `---
 `;
 
 const DEFAULT_DAILY_NOTE_ENTRY_TEMPLATE = `### [{{title}}]({{url}})
-{{#each highlights}}{{#if this.text}}
-> {{this.text}}{{/if}}{{#if this.note}}
-{{this.note}}{{/if}}
-{{/each}}`;
+
+{{#each highlights}}{{#if this.text}}> {{this.text}}{{/if}}
+
+{{#if this.note}}{{this.note}}{{/if}}{{/each}}`;
 
 // --- Rendering Functions ---
 
