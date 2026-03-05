@@ -56,7 +56,7 @@ export default class InoreaderSyncPlugin extends Plugin {
 		// Commands
 		this.addCommand({
 			id: "inoreader-sync",
-			name: "Sync new articles",
+			name: "Sync",
 			callback: () => this.runSync(false),
 		});
 

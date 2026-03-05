@@ -43,7 +43,7 @@ export class SyncEngine {
 				totalSynced += await this.syncSingleStream(
 					"user/-/state/com.google/annotated",
 					folder,
-					sinceTimestamp,
+					0, // Always fetch all; rely on ID dedup for annotations
 					fullResync,
 					processedInRun,
 					this.settings.appendToPeriodicNote,

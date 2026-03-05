@@ -167,7 +167,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		// --- Manual Sync ---
 		new Setting(containerEl)
 			.setName("Sync now")
-			.setDesc("Manually trigger a sync with Inoreader")
+			.setDesc("Sync fetches new annotations and tagged articles. Full resync re-fetches and rewrites all articles (use after changing templates or settings).")
 			.addButton((btn) =>
 				btn
 					.setButtonText("Sync")

@@ -6,8 +6,8 @@ Sync highlights, annotations, and articles from [Inoreader](https://www.inoreade
 
 - **Sync annotated articles** -- articles you've highlighted or annotated in Inoreader get their own markdown files with highlights as blockquotes and notes as plain text
 - **Sync by tag** -- select which Inoreader tags to sync; each tag gets its own subfolder
-- **Periodic note integration** -- optionally append article entries to your daily or weekly notes, compatible with both the Daily Notes core plugin and Periodic Notes community plugin
-- **Incremental sync** -- only fetches new articles since your last sync, respecting Inoreader API rate limits
+- **Periodic note integration** -- optionally append or prepend article entries to your daily, weekly, monthly, quarterly, or yearly notes with an optional heading
+- **Incremental sync** -- only fetches new articles since your last sync, with rate limit detection
 - **Customizable templates** -- configure article file and periodic note entry templates with Handlebars-like syntax
 - **Configurable frontmatter** -- choose which metadata fields to include (title, author, URL, published date, feed, tags)
 - **Duplicate detection** -- tracks synced article IDs and highlight IDs to prevent duplicates across re-syncs
@@ -36,9 +36,9 @@ Synced articles are organized under your configured output folder (default: `Ino
 
 ```
 Inoreader/
-  annotations/
+  Annotations/
     Article Title.md
-  tags/
+  Tags/
     Tag Name/
       Another Article.md
 ```
@@ -57,8 +57,8 @@ Use `{{#each highlights}}...{{/each}}` to iterate highlights, with `{{this.text}
 
 ## Commands
 
-- **Sync new articles** -- incremental sync since last run
-- **Full resync** -- re-fetch and re-process all articles
+- **Sync** -- fetch new annotations and tagged articles
+- **Full resync** -- re-fetch and rewrite all articles (use after changing templates or settings)
 - **Connect to Inoreader** -- start the OAuth authentication flow
 - **Disconnect from Inoreader** -- clear stored credentials
 
