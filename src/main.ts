@@ -189,19 +189,33 @@ export default class InoreaderSyncPlugin extends Plugin {
 		const loaded = await this.loadData();
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
 
-		// Migrate syncTag -> syncTags (pre-0.9.0)
-		if (loaded && typeof (loaded as any).syncTag === "string" && (loaded as any).syncTag.trim()) {
-			if (!this.settings.syncTags || this.settings.syncTags.length === 0) {
-				this.settings.syncTags = [(loaded as any).syncTag.trim()];
+		if (loaded) {
+			// Migrate pre-0.17.0: global source settings → per-output source settings
+			if ((loaded as any).syncAnnotations !== undefined && (loaded as any).articleFilesIncludeAnnotations === undefined) {
+				this.settings.articleFilesEnabled = true;
+				this.settings.articleFilesIncludeAnnotations = (loaded as any).syncAnnotations;
 			}
-		}
-		// Migrate syncSource -> syncAnnotations (pre-0.9.0)
-		if (loaded && (loaded as any).syncSource) {
-			const old = (loaded as any).syncSource;
-			if (old === "annotated") {
-				this.settings.syncAnnotations = true;
-			} else if (old === "tagged") {
-				this.settings.syncAnnotations = false;
+			if ((loaded as any).syncTags !== undefined && (loaded as any).articleFilesTags === undefined) {
+				this.settings.articleFilesTags = (loaded as any).syncTagsEnabled ? (loaded as any).syncTags : [];
+			}
+			if ((loaded as any).periodicNoteTag !== undefined && (loaded as any).periodicNoteTags === undefined) {
+				this.settings.periodicNoteTags = (loaded as any).periodicNoteTag ? [(loaded as any).periodicNoteTag] : [];
+			}
+
+			// Migrate pre-0.9.0: syncTag → articleFilesTags
+			if (typeof (loaded as any).syncTag === "string" && (loaded as any).syncTag.trim()) {
+				if (this.settings.articleFilesTags.length === 0) {
+					this.settings.articleFilesTags = [(loaded as any).syncTag.trim()];
+				}
+			}
+			// Migrate pre-0.9.0: syncSource → articleFilesIncludeAnnotations
+			if ((loaded as any).syncSource) {
+				const old = (loaded as any).syncSource;
+				if (old === "annotated") {
+					this.settings.articleFilesIncludeAnnotations = true;
+				} else if (old === "tagged") {
+					this.settings.articleFilesIncludeAnnotations = false;
+				}
 			}
 		}
 	}

@@ -24,8 +24,16 @@ export class SyncEngine {
 	}
 
 	async sync(fullResync: boolean = false): Promise<number> {
-		if (!this.settings.syncAnnotations && !(this.settings.syncTagsEnabled && this.settings.syncTags.length > 0)) {
-			new Notice("Inoreader: Please enable annotations or select tags in settings");
+		const needAnnotations =
+			(this.settings.articleFilesEnabled && this.settings.articleFilesIncludeAnnotations) ||
+			(this.settings.appendToPeriodicNote && this.settings.periodicNoteIncludeAnnotations);
+
+		const articleTags = this.settings.articleFilesEnabled ? this.settings.articleFilesTags : [];
+		const periodicTags = this.settings.appendToPeriodicNote ? this.settings.periodicNoteTags : [];
+		const neededTags = [...new Set([...articleTags, ...periodicTags])];
+
+		if (!needAnnotations && neededTags.length === 0) {
+			new Notice("Inoreader: No sources configured. Enable annotations or select tags in settings.");
 			return 0;
 		}
 
@@ -36,8 +44,10 @@ export class SyncEngine {
 
 		new Notice("Inoreader: Fetching articles...");
 
-		// Sync annotated articles
-		if (this.settings.syncAnnotations) {
+		// Process annotations stream
+		if (needAnnotations) {
+			const writeArticle = this.settings.articleFilesEnabled && this.settings.articleFilesIncludeAnnotations;
+			const writePeriodicNote = this.settings.appendToPeriodicNote && this.settings.periodicNoteIncludeAnnotations;
 			const folder = normalizePath(`${this.settings.articleFolder}/Annotations`);
 			try {
 				totalSynced += await this.syncSingleStream(
@@ -46,7 +56,8 @@ export class SyncEngine {
 					0, // Always fetch all; rely on ID dedup for annotations
 					fullResync,
 					processedInRun,
-					this.settings.appendToPeriodicNote && this.settings.periodicNoteIncludeAnnotations,
+					writeArticle,
+					writePeriodicNote,
 				);
 			} catch (e) {
 				hadErrors = true;
@@ -55,9 +66,10 @@ export class SyncEngine {
 			}
 		}
 
-		// Sync each selected tag
-		const tagsToSync = this.settings.syncTagsEnabled ? this.settings.syncTags : [];
-		for (const tagName of tagsToSync) {
+		// Process each needed tag stream
+		for (const tagName of neededTags) {
+			const writeArticle = this.settings.articleFilesEnabled && articleTags.includes(tagName);
+			const writePeriodicNote = this.settings.appendToPeriodicNote && periodicTags.includes(tagName);
 			const folderName = sanitizeFilename(tagName);
 			const folder = normalizePath(`${this.settings.articleFolder}/Tags/${folderName}`);
 			try {
@@ -67,7 +79,8 @@ export class SyncEngine {
 					sinceTimestamp,
 					fullResync,
 					processedInRun,
-					this.settings.appendToPeriodicNote && this.settings.periodicNoteTag === tagName,
+					writeArticle,
+					writePeriodicNote,
 				);
 			} catch (e) {
 				hadErrors = true;
@@ -96,7 +109,8 @@ export class SyncEngine {
 		sinceTimestamp: number,
 		fullResync: boolean,
 		crossDedup: Set<string>,
-		appendToPeriodicNote: boolean,
+		writeArticle: boolean,
+		writePeriodicNote: boolean,
 	): Promise<number> {
 		let articles: InoreaderArticle[];
 		try {
@@ -132,8 +146,10 @@ export class SyncEngine {
 		for (const article of toProcess) {
 			try {
 				const data = this.transformArticle(article);
-				await this.writeArticleFile(data, folderPath);
-				if (appendToPeriodicNote) {
+				if (writeArticle) {
+					await this.writeArticleFile(data, folderPath);
+				}
+				if (writePeriodicNote) {
 					await this.appendToPeriodicNote(data);
 				}
 				crossDedup.add(article.id);

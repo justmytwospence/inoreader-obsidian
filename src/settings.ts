@@ -22,13 +22,11 @@ export interface InoreaderSyncSettings {
 	tokenExpiresAt: number;
 	isConnected: boolean;
 
-	// Sync source
-	syncAnnotations: boolean;
-	syncTagsEnabled: boolean;
-	syncTags: string[];
-	includeAnnotations: boolean;
-
 	// Article files
+	articleFilesEnabled: boolean;
+	articleFilesIncludeAnnotations: boolean;
+	articleFilesTags: string[];
+	includeAnnotations: boolean;
 	articleFolder: string;
 	filenameTemplate: string;
 	articleTemplate: string;
@@ -36,10 +34,10 @@ export interface InoreaderSyncSettings {
 	highlightInsertPosition: InsertPosition;
 	frontmatterFields: string[];
 
-	// Daily/weekly notes
+	// Periodic notes
 	appendToPeriodicNote: boolean;
 	periodicNoteIncludeAnnotations: boolean;
-	periodicNoteTag: string;
+	periodicNoteTags: string[];
 	periodicNoteType: NoteType;
 	periodicNoteFolder: string;
 	periodicNoteDateFormat: string;
@@ -65,11 +63,10 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	tokenExpiresAt: 0,
 	isConnected: false,
 
-	syncAnnotations: true,
-	syncTagsEnabled: false,
-	syncTags: [],
+	articleFilesEnabled: true,
+	articleFilesIncludeAnnotations: true,
+	articleFilesTags: [],
 	includeAnnotations: true,
-
 	articleFolder: "Inoreader",
 	filenameTemplate: "{{title}}",
 	articleTemplate: "",
@@ -79,7 +76,7 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 
 	appendToPeriodicNote: false,
 	periodicNoteIncludeAnnotations: true,
-	periodicNoteTag: "",
+	periodicNoteTags: [],
 	periodicNoteType: "daily",
 	periodicNoteFolder: "",
 	periodicNoteDateFormat: "YYYY-MM-DD",
@@ -206,67 +203,68 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		// --- Sync Source ---
-		new Setting(containerEl).setName("Sync source").setHeading();
+		// --- Article Files ---
+		new Setting(containerEl).setName("Article files").setHeading();
 
 		new Setting(containerEl)
-			.setName("Sync annotated articles")
-			.setDesc("Sync articles you've highlighted or annotated in Inoreader")
+			.setName("Enable article files")
+			.setDesc("Create individual markdown files for synced articles")
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.syncAnnotations)
+					.setValue(this.plugin.settings.articleFilesEnabled)
 					.onChange(async (value) => {
-						this.plugin.settings.syncAnnotations = value;
+						this.plugin.settings.articleFilesEnabled = value;
 						await this.plugin.saveSettings();
 						this.display();
 					}),
 			);
 
-		if (this.plugin.settings.syncAnnotations) {
-			const annotationSub = containerEl.createDiv("subsettings");
-			new Setting(annotationSub)
+		if (this.plugin.settings.articleFilesEnabled) {
+			const articleSub = containerEl.createDiv("subsettings");
+
+			new Setting(articleSub)
 				.setName("Include annotations")
-				.setDesc("Include highlight text and notes in article files (requires Inoreader Pro)")
+				.setDesc("Sync articles you've highlighted or annotated")
 				.addToggle((toggle) =>
 					toggle
-						.setValue(this.plugin.settings.includeAnnotations)
+						.setValue(this.plugin.settings.articleFilesIncludeAnnotations)
 						.onChange(async (value) => {
-							this.plugin.settings.includeAnnotations = value;
+							this.plugin.settings.articleFilesIncludeAnnotations = value;
 							await this.plugin.saveSettings();
+							this.display();
 						}),
 				);
-		}
 
-		new Setting(containerEl)
-			.setName("Sync tagged articles")
-			.setDesc("Sync articles by tag -- each tag gets its own subfolder")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.syncTagsEnabled)
-					.onChange(async (value) => {
-						this.plugin.settings.syncTagsEnabled = value;
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
+			if (this.plugin.settings.articleFilesIncludeAnnotations) {
+				new Setting(articleSub)
+					.setName("Include annotation text")
+					.setDesc("Include highlight text and notes in article files (requires Inoreader Pro)")
+					.addToggle((toggle) =>
+						toggle
+							.setValue(this.plugin.settings.includeAnnotations)
+							.onChange(async (value) => {
+								this.plugin.settings.includeAnnotations = value;
+								await this.plugin.saveSettings();
+							}),
+					);
+			}
 
-		if (this.plugin.settings.syncTagsEnabled) {
-			const tagSub = containerEl.createDiv("subsettings");
-			new Setting(tagSub).setName("Your Inoreader tags").setHeading();
-
-			const tagContainer = tagSub.createDiv("tag-selection-container");
+			const articleTagContainer = articleSub.createDiv("tag-selection-container");
+			new Setting(articleTagContainer)
+				.setName("Tags")
+				.setDesc("Sync articles with these tags -- each gets its own subfolder");
 			if (this.plugin.settings.isConnected) {
-				this.renderTagToggles(tagContainer);
+				this.renderTagToggles(articleTagContainer, "articleFilesTags");
 			} else {
-				new Setting(tagContainer)
+				new Setting(articleTagContainer)
 					.setName("Tag names")
-					.setDesc("Connect to Inoreader to see your tags, or enter tag names manually (one per line)")
+					.setDesc("Connect to see your tags, or enter manually (one per line)")
 					.addTextArea((text) => {
 						text
 							.setPlaceholder("Read Later\nResearch")
-							.setValue(this.plugin.settings.syncTags.join("\n"))
+							.setValue(this.plugin.settings.articleFilesTags.join("\n"))
 							.onChange(async (value) => {
-								this.plugin.settings.syncTags = value
+								this.plugin.settings.articleFilesTags = value
 									.split("\n")
 									.map((t) => t.trim())
 									.filter((t) => t.length > 0);
@@ -275,107 +273,104 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 						text.inputEl.rows = 5;
 					});
 			}
-		}
 
-		// --- Article Files ---
-		new Setting(containerEl).setName("Article files").setHeading();
-
-		new Setting(containerEl)
-			.setName("Output folder")
-			.setDesc("Folder where article files are created")
-			.addText((text) =>
-				text
-					.setPlaceholder("Inoreader")
-					.setValue(this.plugin.settings.articleFolder)
-					.onChange(async (value) => {
-						this.plugin.settings.articleFolder = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Filename template")
-			.setDesc("Variables: {{title}}, {{author}}, {{date}}, {{feed}}")
-			.addText((text) =>
-				text
-					.setPlaceholder("{{title}}")
-					.setValue(this.plugin.settings.filenameTemplate)
-					.onChange(async (value) => {
-						this.plugin.settings.filenameTemplate = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("New highlight position")
-			.setDesc("Where to insert new highlights when re-syncing an existing article")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("append", "Append to end")
-					.addOption("prepend", "Prepend to top")
-					.setValue(this.plugin.settings.highlightInsertPosition)
-					.onChange(async (value: string) => {
-						this.plugin.settings.highlightInsertPosition = value as InsertPosition;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Include full article content")
-			.setDesc("Convert article HTML to markdown and append below highlights")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.includeContent)
-					.onChange(async (value) => {
-						this.plugin.settings.includeContent = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Article template")
-			.setDesc(
-				"Custom template for article files. Leave empty for default. " +
-				"Variables: {{title}}, {{author}}, {{url}}, {{feed_title}}, {{feed_url}}, " +
-				"{{published_date}}, {{highlights}}, {{content}}, {{highlight_count}}, " +
-				"{{tags}}, {{frontmatter}}, {{id}}",
-			)
-			.addTextArea((text) => {
-				text
-					.setPlaceholder("Leave empty for default template")
-					.setValue(this.plugin.settings.articleTemplate)
-					.onChange(async (value) => {
-						this.plugin.settings.articleTemplate = value;
-						await this.plugin.saveSettings();
-					});
-				text.inputEl.rows = 12;
-				text.inputEl.cols = 50;
-			});
-
-		// Frontmatter fields
-		const fmFields = ["title", "author", "url", "published", "feed", "tags"];
-		new Setting(containerEl)
-			.setName("Frontmatter fields")
-			.setDesc("Which metadata fields to include in frontmatter (inoreader_id is always included)");
-
-		for (const field of fmFields) {
-			new Setting(containerEl)
-				.setName(`  ${field}`)
-				.addToggle((toggle) =>
-					toggle
-						.setValue(this.plugin.settings.frontmatterFields.includes(field))
+			new Setting(articleSub)
+				.setName("Output folder")
+				.setDesc("Folder where article files are created")
+				.addText((text) =>
+					text
+						.setPlaceholder("Inoreader")
+						.setValue(this.plugin.settings.articleFolder)
 						.onChange(async (value) => {
-							if (value) {
-								if (!this.plugin.settings.frontmatterFields.includes(field)) {
-									this.plugin.settings.frontmatterFields.push(field);
-								}
-							} else {
-								this.plugin.settings.frontmatterFields =
-									this.plugin.settings.frontmatterFields.filter((f) => f !== field);
-							}
+							this.plugin.settings.articleFolder = value;
 							await this.plugin.saveSettings();
 						}),
 				);
+
+			new Setting(articleSub)
+				.setName("Filename template")
+				.setDesc("Variables: {{title}}, {{author}}, {{date}}, {{feed}}")
+				.addText((text) =>
+					text
+						.setPlaceholder("{{title}}")
+						.setValue(this.plugin.settings.filenameTemplate)
+						.onChange(async (value) => {
+							this.plugin.settings.filenameTemplate = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(articleSub)
+				.setName("New highlight position")
+				.setDesc("Where to insert new highlights when re-syncing an existing article")
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOption("append", "Append to end")
+						.addOption("prepend", "Prepend to top")
+						.setValue(this.plugin.settings.highlightInsertPosition)
+						.onChange(async (value: string) => {
+							this.plugin.settings.highlightInsertPosition = value as InsertPosition;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(articleSub)
+				.setName("Include full article content")
+				.setDesc("Convert article HTML to markdown and append below highlights")
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.includeContent)
+						.onChange(async (value) => {
+							this.plugin.settings.includeContent = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+
+			new Setting(articleSub)
+				.setName("Article template")
+				.setDesc(
+					"Custom template for article files. Leave empty for default. " +
+					"Variables: {{title}}, {{author}}, {{url}}, {{feed_title}}, {{feed_url}}, " +
+					"{{published_date}}, {{highlights}}, {{content}}, {{highlight_count}}, " +
+					"{{tags}}, {{frontmatter}}, {{id}}",
+				)
+				.addTextArea((text) => {
+					text
+						.setPlaceholder("Leave empty for default template")
+						.setValue(this.plugin.settings.articleTemplate)
+						.onChange(async (value) => {
+							this.plugin.settings.articleTemplate = value;
+							await this.plugin.saveSettings();
+						});
+					text.inputEl.rows = 12;
+					text.inputEl.cols = 50;
+				});
+
+			// Frontmatter fields
+			const fmFields = ["title", "author", "url", "published", "feed", "tags"];
+			new Setting(articleSub)
+				.setName("Frontmatter fields")
+				.setDesc("Which metadata fields to include in frontmatter (inoreader_id is always included)");
+
+			for (const field of fmFields) {
+				new Setting(articleSub)
+					.setName(`  ${field}`)
+					.addToggle((toggle) =>
+						toggle
+							.setValue(this.plugin.settings.frontmatterFields.includes(field))
+							.onChange(async (value) => {
+								if (value) {
+									if (!this.plugin.settings.frontmatterFields.includes(field)) {
+										this.plugin.settings.frontmatterFields.push(field);
+									}
+								} else {
+									this.plugin.settings.frontmatterFields =
+										this.plugin.settings.frontmatterFields.filter((f) => f !== field);
+								}
+								await this.plugin.saveSettings();
+							}),
+					);
+			}
 		}
 
 		// --- Periodic Notes ---
@@ -397,35 +392,40 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.appendToPeriodicNote) {
 			const periodicSub = containerEl.createDiv("subsettings");
 
-			if (this.plugin.settings.syncAnnotations) {
-				new Setting(periodicSub)
-					.setName("Include annotations")
-					.setDesc("Append annotated articles to periodic notes")
-					.addToggle((toggle) =>
-						toggle
-							.setValue(this.plugin.settings.periodicNoteIncludeAnnotations)
-							.onChange(async (value) => {
-								this.plugin.settings.periodicNoteIncludeAnnotations = value;
-								await this.plugin.saveSettings();
-							}),
-					);
-			}
+			new Setting(periodicSub)
+				.setName("Include annotations")
+				.setDesc("Append annotated articles to periodic notes")
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.plugin.settings.periodicNoteIncludeAnnotations)
+						.onChange(async (value) => {
+							this.plugin.settings.periodicNoteIncludeAnnotations = value;
+							await this.plugin.saveSettings();
+						}),
+				);
 
-			if (this.plugin.settings.syncTagsEnabled && this.plugin.settings.syncTags.length > 0) {
-				new Setting(periodicSub)
-					.setName("Include tag")
-					.setDesc("Also append articles from this tag to periodic notes")
-					.addDropdown((dropdown) => {
-						dropdown.addOption("", "None");
-						for (const tag of this.plugin.settings.syncTags) {
-							dropdown.addOption(tag, tag);
-						}
-						dropdown
-							.setValue(this.plugin.settings.periodicNoteTag)
+			const periodicTagContainer = periodicSub.createDiv("tag-selection-container");
+			new Setting(periodicTagContainer)
+				.setName("Tags")
+				.setDesc("Also append articles from these tags to periodic notes");
+			if (this.plugin.settings.isConnected) {
+				this.renderTagToggles(periodicTagContainer, "periodicNoteTags");
+			} else {
+				new Setting(periodicTagContainer)
+					.setName("Tag names")
+					.setDesc("Connect to see your tags, or enter manually (one per line)")
+					.addTextArea((text) => {
+						text
+							.setPlaceholder("Read Later\nResearch")
+							.setValue(this.plugin.settings.periodicNoteTags.join("\n"))
 							.onChange(async (value) => {
-								this.plugin.settings.periodicNoteTag = value;
+								this.plugin.settings.periodicNoteTags = value
+									.split("\n")
+									.map((t) => t.trim())
+									.filter((t) => t.length > 0);
 								await this.plugin.saveSettings();
 							});
+						text.inputEl.rows = 5;
 					});
 			}
 
@@ -597,7 +597,10 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			);
 	}
 
-	private async renderTagToggles(container: HTMLElement): Promise<void> {
+	private async renderTagToggles(
+		container: HTMLElement,
+		field: "articleFilesTags" | "periodicNoteTags",
+	): Promise<void> {
 		const loadingEl = container.createEl("p", { text: "Loading tags..." });
 
 		try {
@@ -619,7 +622,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 				return;
 			}
 
-			const selectedSet = new Set(this.plugin.settings.syncTags);
+			const selectedSet = new Set(this.plugin.settings[field]);
 
 			for (const tag of userTags) {
 				new Setting(container)
@@ -629,12 +632,12 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 							.setValue(selectedSet.has(tag.label))
 							.onChange(async (value) => {
 								if (value) {
-									if (!this.plugin.settings.syncTags.includes(tag.label)) {
-										this.plugin.settings.syncTags.push(tag.label);
+									if (!this.plugin.settings[field].includes(tag.label)) {
+										this.plugin.settings[field].push(tag.label);
 									}
 								} else {
-									this.plugin.settings.syncTags =
-										this.plugin.settings.syncTags.filter((t) => t !== tag.label);
+									this.plugin.settings[field] =
+										this.plugin.settings[field].filter((t) => t !== tag.label);
 								}
 								await this.plugin.saveSettings();
 							}),
@@ -650,9 +653,9 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 				.addTextArea((text) => {
 					text
 						.setPlaceholder("Read Later\nResearch")
-						.setValue(this.plugin.settings.syncTags.join("\n"))
+						.setValue(this.plugin.settings[field].join("\n"))
 						.onChange(async (value) => {
-							this.plugin.settings.syncTags = value
+							this.plugin.settings[field] = value
 								.split("\n")
 								.map((t) => t.trim())
 								.filter((t) => t.length > 0);
