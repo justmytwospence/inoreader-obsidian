@@ -38,6 +38,8 @@ export interface InoreaderSyncSettings {
 
 	// Daily/weekly notes
 	appendToPeriodicNote: boolean;
+	periodicNoteIncludeAnnotations: boolean;
+	periodicNoteTag: string;
 	periodicNoteType: NoteType;
 	periodicNoteFolder: string;
 	periodicNoteDateFormat: string;
@@ -76,6 +78,8 @@ export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	frontmatterFields: ["title", "author", "url", "published", "feed", "tags"],
 
 	appendToPeriodicNote: false,
+	periodicNoteIncludeAnnotations: true,
+	periodicNoteTag: "",
 	periodicNoteType: "daily",
 	periodicNoteFolder: "",
 	periodicNoteDateFormat: "YYYY-MM-DD",
@@ -392,6 +396,38 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.appendToPeriodicNote) {
 			const periodicSub = containerEl.createDiv("subsettings");
+
+			if (this.plugin.settings.syncAnnotations) {
+				new Setting(periodicSub)
+					.setName("Include annotations")
+					.setDesc("Append annotated articles to periodic notes")
+					.addToggle((toggle) =>
+						toggle
+							.setValue(this.plugin.settings.periodicNoteIncludeAnnotations)
+							.onChange(async (value) => {
+								this.plugin.settings.periodicNoteIncludeAnnotations = value;
+								await this.plugin.saveSettings();
+							}),
+					);
+			}
+
+			if (this.plugin.settings.syncTagsEnabled && this.plugin.settings.syncTags.length > 0) {
+				new Setting(periodicSub)
+					.setName("Include tag")
+					.setDesc("Also append articles from this tag to periodic notes")
+					.addDropdown((dropdown) => {
+						dropdown.addOption("", "None");
+						for (const tag of this.plugin.settings.syncTags) {
+							dropdown.addOption(tag, tag);
+						}
+						dropdown
+							.setValue(this.plugin.settings.periodicNoteTag)
+							.onChange(async (value) => {
+								this.plugin.settings.periodicNoteTag = value;
+								await this.plugin.saveSettings();
+							});
+					});
+			}
 
 			new Setting(periodicSub)
 				.setName("Note type")

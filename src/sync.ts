@@ -46,7 +46,7 @@ export class SyncEngine {
 					0, // Always fetch all; rely on ID dedup for annotations
 					fullResync,
 					processedInRun,
-					this.settings.appendToPeriodicNote,
+					this.settings.appendToPeriodicNote && this.settings.periodicNoteIncludeAnnotations,
 				);
 			} catch (e) {
 				hadErrors = true;
@@ -67,7 +67,7 @@ export class SyncEngine {
 					sinceTimestamp,
 					fullResync,
 					processedInRun,
-					false,
+					this.settings.appendToPeriodicNote && this.settings.periodicNoteTag === tagName,
 				);
 			} catch (e) {
 				hadErrors = true;

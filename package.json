@@ -1,6 +1,6 @@
 {
   "name": "inoreader-sync",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Sync highlights, annotations, and articles from Inoreader into your Obsidian vault.",
   "main": "main.js",
   "scripts": {
