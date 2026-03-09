@@ -37,7 +37,6 @@ export class SyncEngine {
 			return 0;
 		}
 
-		const sinceTimestamp = fullResync ? 0 : this.settings.lastSyncTimestamp;
 		const processedInRun = new Set<string>();
 		let totalSynced = 0;
 		let hadErrors = false;
@@ -76,7 +75,7 @@ export class SyncEngine {
 				totalSynced += await this.syncSingleStream(
 					`user/-/label/${tagName}`,
 					folder,
-					sinceTimestamp,
+					0, // Always fetch all; rely on ID dedup (tag date != publish date)
 					fullResync,
 					processedInRun,
 					writeArticle,
