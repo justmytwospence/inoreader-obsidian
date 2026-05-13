@@ -35,3 +35,11 @@
   border-left: 2px solid var(--background-modifier-border);
   margin-left: 12px;
 }
+
+.inoreader-paste-input {
+  width: 100%;
+}
+
+.inoreader-paste-error {
+  color: var(--text-error);
+}
