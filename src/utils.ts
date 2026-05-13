@@ -1,3 +1,5 @@
+import { htmlToMarkdown as obsidianHtmlToMarkdown } from "obsidian";
+
 /**
  * Sanitize a string for use as a filename.
  * Removes characters invalid on Windows, macOS, and Linux.
@@ -10,39 +12,8 @@ export function sanitizeFilename(name: string): string {
 		.slice(0, 200);
 }
 
-/**
- * Convert HTML to Markdown.
- * Uses Obsidian's built-in htmlToMarkdown if available, otherwise a basic fallback.
- */
 export function htmlToMarkdown(html: string): string {
-	if (typeof (window as any).htmlToMarkdown === "function") {
-		return (window as any).htmlToMarkdown(html);
-	}
-	// Basic fallback
-	return html
-		.replace(/<br\s*\/?>/gi, "\n")
-		.replace(/<\/p>/gi, "\n\n")
-		.replace(/<\/li>/gi, "\n")
-		.replace(/<li[^>]*>/gi, "- ")
-		.replace(/<\/h[1-6]>/gi, "\n\n")
-		.replace(/<h([1-6])[^>]*>/gi, (_, level) => "#".repeat(parseInt(level)) + " ")
-		.replace(/<a[^>]+href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)")
-		.replace(/<(strong|b)>(.*?)<\/\1>/gi, "**$2**")
-		.replace(/<(em|i)>(.*?)<\/\1>/gi, "*$2*")
-		.replace(/<code>(.*?)<\/code>/gi, "`$1`")
-		.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, content) =>
-			content.trim().split("\n").map((line: string) => `> ${line}`).join("\n")
-		)
-		.replace(/<img[^>]+alt="([^"]*)"[^>]*>/gi, "![$1]")
-		.replace(/<[^>]+>/g, "")
-		.replace(/&amp;/g, "&")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/&nbsp;/g, " ")
-		.replace(/\n{3,}/g, "\n\n")
-		.trim();
+	return obsidianHtmlToMarkdown(html);
 }
 
 /**
@@ -59,9 +30,10 @@ export function formatDate(date: Date, format: string): string {
 
 	// Extract bracket-escaped literals before token replacement
 	const literals: string[] = [];
-	let result = format.replace(/\[([^\]]*)\]/g, (_, content) => {
+	const PLACEHOLDER = "";
+	let result = format.replace(/\[([^\]]*)\]/g, (_match, content: string) => {
 		literals.push(content);
-		return `\x00${literals.length - 1}\x00`;
+		return `${PLACEHOLDER}${literals.length - 1}${PLACEHOLDER}`;
 	});
 
 	// ISO week-numbering year (must replace before YYYY to avoid partial match)
@@ -82,7 +54,8 @@ export function formatDate(date: Date, format: string): string {
 	result = result.replace("Q", quarter);
 
 	// Restore bracket-escaped literals
-	result = result.replace(/\x00(\d+)\x00/g, (_, idx) => literals[parseInt(idx, 10)]);
+	const placeholderRegex = new RegExp(`${PLACEHOLDER}(\\d+)${PLACEHOLDER}`, "g");
+	result = result.replace(placeholderRegex, (_match, idx: string) => literals[parseInt(idx, 10)]);
 
 	return result;
 }

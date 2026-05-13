@@ -13,17 +13,23 @@ const BASE_URL = "https://www.inoreader.com/reader/api/0";
 const OAUTH_AUTH_URL = "https://www.inoreader.com/oauth2/auth";
 const OAUTH_TOKEN_URL = "https://www.inoreader.com/oauth2/token";
 
+interface OAuthTokenResponse {
+	access_token: string;
+	refresh_token?: string;
+	expires_in: number;
+}
+
 export class InoreaderAPI {
 	private clientId: string;
 	private clientSecret: string;
 	private tokens: OAuthTokens;
-	private onTokenRefresh: (tokens: OAuthTokens) => Promise<void>;
+	private onTokenRefresh: (tokens: OAuthTokens) => void | Promise<void>;
 
 	constructor(
 		clientId: string,
 		clientSecret: string,
 		tokens: OAuthTokens,
-		onTokenRefresh: (tokens: OAuthTokens) => Promise<void>,
+		onTokenRefresh: (tokens: OAuthTokens) => void | Promise<void>,
 	) {
 		this.clientId = clientId;
 		this.clientSecret = clientSecret;
@@ -70,10 +76,10 @@ export class InoreaderAPI {
 				grant_type: "authorization_code",
 			}).toString(),
 		});
-		const data = resp.json;
+		const data = resp.json as OAuthTokenResponse;
 		this.tokens = {
 			accessToken: data.access_token,
-			refreshToken: data.refresh_token,
+			refreshToken: data.refresh_token ?? "",
 			expiresAt: Date.now() + data.expires_in * 1000,
 		};
 		await this.onTokenRefresh(this.tokens);
@@ -96,7 +102,7 @@ export class InoreaderAPI {
 				refresh_token: this.tokens.refreshToken,
 			}).toString(),
 		});
-		const data = resp.json;
+		const data = resp.json as OAuthTokenResponse;
 		this.tokens = {
 			accessToken: data.access_token,
 			refreshToken: data.refresh_token ?? this.tokens.refreshToken,
@@ -135,22 +141,22 @@ export class InoreaderAPI {
 
 	async getUserInfo(): Promise<InoreaderUserInfo> {
 		const resp = await this.request("/user-info");
-		return resp.json;
+		return resp.json as InoreaderUserInfo;
 	}
 
 	async getTagList(): Promise<InoreaderTagListResponse> {
 		const resp = await this.request("/tag/list", { output: "json" });
-		return resp.json;
+		return resp.json as InoreaderTagListResponse;
 	}
 
 	async getSubscriptionList(): Promise<InoreaderSubscriptionListResponse> {
 		const resp = await this.request("/subscription/list", { output: "json" });
-		return resp.json;
+		return resp.json as InoreaderSubscriptionListResponse;
 	}
 
 	async getUnreadCounts(): Promise<InoreaderUnreadCountResponse> {
 		const resp = await this.request("/unread-count", { output: "json" });
-		return resp.json;
+		return resp.json as InoreaderUnreadCountResponse;
 	}
 
 	/**
@@ -187,7 +193,7 @@ export class InoreaderAPI {
 				`/stream/contents/${encodeURIComponent(streamId)}`,
 				params,
 			);
-			const data: InoreaderStreamContentsResponse = resp.json;
+			const data = resp.json as InoreaderStreamContentsResponse;
 			allArticles.push(...data.items);
 			continuation = data.continuation;
 

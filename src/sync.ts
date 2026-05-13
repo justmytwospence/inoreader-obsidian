@@ -3,7 +3,7 @@ import { InoreaderAPI } from "./api";
 import { InoreaderArticle, ArticleData, HighlightData } from "./types";
 import { InoreaderSyncSettings, NOTE_TYPE_DATE_FORMATS } from "./settings";
 import { TemplateSettings, renderArticleFile, renderHighlightBlock, renderDailyNoteEntry } from "./templates";
-import { sanitizeFilename, htmlToMarkdown, formatDate, shortHash } from "./utils";
+import { sanitizeFilename, formatDate, shortHash } from "./utils";
 
 export class SyncEngine {
 	private app: App;
@@ -33,7 +33,7 @@ export class SyncEngine {
 		const neededTags = [...new Set([...articleTags, ...periodicTags])];
 
 		if (!needAnnotations && neededTags.length === 0) {
-			new Notice("Inoreader: No sources configured. Enable annotations or select tags in settings.");
+			new Notice("No sources configured. Enable annotations or select tags in settings.");
 			return 0;
 		}
 
@@ -41,7 +41,7 @@ export class SyncEngine {
 		let totalSynced = 0;
 		let hadErrors = false;
 
-		new Notice("Inoreader: Fetching articles...");
+		new Notice("Fetching Inoreader articles...");
 
 		// Process annotations stream
 		if (needAnnotations) {
@@ -61,7 +61,7 @@ export class SyncEngine {
 			} catch (e) {
 				hadErrors = true;
 				console.error("Inoreader: failed to sync annotations", e);
-				new Notice("Inoreader: " + (e as Error).message);
+				new Notice((e as Error).message);
 			}
 		}
 
@@ -84,7 +84,7 @@ export class SyncEngine {
 			} catch (e) {
 				hadErrors = true;
 				console.error(`Inoreader: failed to sync tag "${tagName}"`, e);
-				new Notice("Inoreader: " + (e as Error).message);
+				new Notice((e as Error).message);
 			}
 		}
 
@@ -95,9 +95,9 @@ export class SyncEngine {
 		await this.saveSettings();
 
 		if (totalSynced === 0 && !hadErrors) {
-			new Notice("Inoreader: No new articles to sync");
+			new Notice("No new articles to sync");
 		} else if (totalSynced > 0) {
-			new Notice(`Inoreader: Synced ${totalSynced} articles`);
+			new Notice(`Synced ${totalSynced} articles`);
 		}
 		return totalSynced;
 	}
@@ -229,8 +229,9 @@ export class SyncEngine {
 
 			if (isSameArticle) {
 				if (this.settings.updateBehavior === "overwrite") {
-					const newContent = renderArticleFile(data, this.getTemplateSettings());
-					await this.app.vault.modify(existingFile, newContent);
+					await this.app.vault.process(existingFile, () =>
+						renderArticleFile(data, this.getTemplateSettings()),
+					);
 				} else {
 					await this.appendNewHighlights(existingFile, data);
 				}
@@ -247,8 +248,9 @@ export class SyncEngine {
 		const hashFile = this.app.vault.getAbstractFileByPath(filePath);
 		if (hashFile instanceof TFile) {
 			if (this.settings.updateBehavior === "overwrite") {
-				const newContent = renderArticleFile(data, this.getTemplateSettings());
-				await this.app.vault.modify(hashFile, newContent);
+				await this.app.vault.process(hashFile, () =>
+					renderArticleFile(data, this.getTemplateSettings()),
+				);
 			} else {
 				await this.appendNewHighlights(hashFile, data);
 			}
@@ -263,53 +265,53 @@ export class SyncEngine {
 	private async appendNewHighlights(file: TFile, data: ArticleData): Promise<void> {
 		if (data.highlights.length === 0) return;
 
-		const existingContent = await this.app.vault.read(file);
-
-		// Extract existing highlight IDs from frontmatter
-		const existingHlIds = new Set<number>();
-		const hlIdsMatch = existingContent.match(/^highlight_ids:\s*\[([\s\S]*?)\]/m);
-		if (hlIdsMatch) {
-			const ids = hlIdsMatch[1].split(",").map((s) => parseInt(s.trim(), 10));
-			for (const id of ids) {
-				if (!isNaN(id)) existingHlIds.add(id);
+		await this.app.vault.process(file, (existingContent) => {
+			// Extract existing highlight IDs from frontmatter
+			const existingHlIds = new Set<number>();
+			const hlIdsMatch = existingContent.match(/^highlight_ids:\s*\[([\s\S]*?)\]/m);
+			if (hlIdsMatch) {
+				const ids = hlIdsMatch[1].split(",").map((s) => parseInt(s.trim(), 10));
+				for (const id of ids) {
+					if (!isNaN(id)) existingHlIds.add(id);
+				}
 			}
-		}
 
-		const newHighlights = data.highlights.filter(
-			(h) => !existingHlIds.has(h.id),
-		);
+			const newHighlights = data.highlights.filter(
+				(h) => !existingHlIds.has(h.id),
+			);
 
-		if (newHighlights.length === 0) return;
+			if (newHighlights.length === 0) return existingContent;
 
-		const rendered = newHighlights
-			.map((h) => renderHighlightBlock(h))
-			.join("\n\n");
+			const rendered = newHighlights
+				.map((h) => renderHighlightBlock(h))
+				.join("\n\n");
 
-		// Update highlight_ids in frontmatter
-		const allIds = [...existingHlIds, ...newHighlights.map((h) => h.id)];
-		const newIdsLine = `highlight_ids: [${allIds.join(", ")}]`;
-		let updated = existingContent;
-		if (hlIdsMatch) {
-			updated = updated.replace(/^highlight_ids:\s*\[([\s\S]*?)\]/m, newIdsLine);
-		} else {
-			// Insert highlight_ids before the closing ---
-			const fmEnd = updated.indexOf("\n---", 1);
-			if (fmEnd !== -1) {
-				updated = updated.slice(0, fmEnd) + "\n" + newIdsLine + updated.slice(fmEnd);
+			// Update highlight_ids in frontmatter
+			const allIds = [...existingHlIds, ...newHighlights.map((h) => h.id)];
+			const newIdsLine = `highlight_ids: [${allIds.join(", ")}]`;
+			let updated = existingContent;
+			if (hlIdsMatch) {
+				updated = updated.replace(/^highlight_ids:\s*\[([\s\S]*?)\]/m, newIdsLine);
+			} else {
+				// Insert highlight_ids before the closing ---
+				const fmEnd = updated.indexOf("\n---", 1);
+				if (fmEnd !== -1) {
+					updated = updated.slice(0, fmEnd) + "\n" + newIdsLine + updated.slice(fmEnd);
+				}
 			}
-		}
 
-		// Insert highlights based on position setting
-		const fmEndFull = updated.indexOf("\n---", 1);
-		const bodyStart = fmEndFull !== -1 ? updated.indexOf("\n", fmEndFull + 1) + 1 : 0;
+			// Insert highlights based on position setting
+			const fmEndFull = updated.indexOf("\n---", 1);
+			const bodyStart = fmEndFull !== -1 ? updated.indexOf("\n", fmEndFull + 1) + 1 : 0;
 
-		if (this.settings.highlightInsertPosition === "prepend") {
-			updated = updated.slice(0, bodyStart) + "\n" + rendered + "\n" + updated.slice(bodyStart);
-		} else {
-			updated = updated.trimEnd() + "\n\n" + rendered + "\n";
-		}
+			if (this.settings.highlightInsertPosition === "prepend") {
+				updated = updated.slice(0, bodyStart) + "\n" + rendered + "\n" + updated.slice(bodyStart);
+			} else {
+				updated = updated.trimEnd() + "\n\n" + rendered + "\n";
+			}
 
-		await this.app.vault.modify(file, updated);
+			return updated;
+		});
 	}
 
 	// --- Periodic Note Appending ---
@@ -328,52 +330,52 @@ export class SyncEngine {
 		const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 
 		if (existingFile instanceof TFile) {
-			const content = await this.app.vault.read(existingFile);
+			await this.app.vault.process(existingFile, (content) => {
+				// Dedup by URL
+				if (data.url && content.includes(`](${data.url})`)) return content;
 
-			// Dedup by URL
-			if (data.url && content.includes(`](${data.url})`)) return;
+				let updated: string;
 
-			let updated: string;
+				if (heading) {
+					const headingIdx = content.indexOf(heading);
 
-			if (heading) {
-				const headingIdx = content.indexOf(heading);
-
-				if (headingIdx !== -1) {
-					const afterHeading = content.indexOf("\n", headingIdx);
-					if (prepend) {
-						// Insert right after heading line
-						const insertAt = afterHeading !== -1 ? afterHeading + 1 : content.length;
-						updated =
-							content.slice(0, insertAt) +
-							"\n" + entry + "\n" +
-							content.slice(insertAt);
+					if (headingIdx !== -1) {
+						const afterHeading = content.indexOf("\n", headingIdx);
+						if (prepend) {
+							// Insert right after heading line
+							const insertAt = afterHeading !== -1 ? afterHeading + 1 : content.length;
+							updated =
+								content.slice(0, insertAt) +
+								"\n" + entry + "\n" +
+								content.slice(insertAt);
+						} else {
+							// Find end of heading section (next heading of same or higher level, or EOF)
+							const headingLevel = heading.match(/^#+/)?.[0].length ?? 2;
+							const sectionEnd = this.findSectionEnd(content, afterHeading !== -1 ? afterHeading + 1 : content.length, headingLevel);
+							updated =
+								content.slice(0, sectionEnd).trimEnd() +
+								"\n\n" + entry + "\n" +
+								content.slice(sectionEnd);
+						}
 					} else {
-						// Find end of heading section (next heading of same or higher level, or EOF)
-						const headingLevel = heading.match(/^#+/)?.[0].length ?? 2;
-						const sectionEnd = this.findSectionEnd(content, afterHeading !== -1 ? afterHeading + 1 : content.length, headingLevel);
-						updated =
-							content.slice(0, sectionEnd).trimEnd() +
-							"\n\n" + entry + "\n" +
-							content.slice(sectionEnd);
+						// Heading not found; insert heading + entry
+						if (prepend) {
+							updated = heading + "\n\n" + entry + "\n\n" + content;
+						} else {
+							updated = content + "\n\n" + heading + "\n\n" + entry;
+						}
 					}
 				} else {
-					// Heading not found; insert heading + entry
+					// No heading
 					if (prepend) {
-						updated = heading + "\n\n" + entry + "\n\n" + content;
+						updated = entry + "\n\n" + content;
 					} else {
-						updated = content + "\n\n" + heading + "\n\n" + entry;
+						updated = content.trimEnd() + "\n\n" + entry + "\n";
 					}
 				}
-			} else {
-				// No heading
-				if (prepend) {
-					updated = entry + "\n\n" + content;
-				} else {
-					updated = content.trimEnd() + "\n\n" + entry + "\n";
-				}
-			}
 
-			await this.app.vault.modify(existingFile, updated);
+				return updated;
+			});
 		} else {
 			// Create new periodic note
 			if (folder) await this.ensureFolderExists(folder);

@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type InoreaderSyncPlugin from "./main";
+import { loadSecrets, saveSecrets } from "./secrets";
 
 export type NoteType = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
 export type UpdateBehavior = "append" | "overwrite";
@@ -14,12 +15,8 @@ export const NOTE_TYPE_DATE_FORMATS: Record<NoteType, string> = {
 };
 
 export interface InoreaderSyncSettings {
-	// Auth
+	// Auth (secrets live in localStorage, see src/secrets.ts)
 	clientId: string;
-	clientSecret: string;
-	accessToken: string;
-	refreshToken: string;
-	tokenExpiresAt: number;
 	isConnected: boolean;
 
 	// Article files
@@ -57,10 +54,6 @@ export interface InoreaderSyncSettings {
 
 export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	clientId: "",
-	clientSecret: "",
-	accessToken: "",
-	refreshToken: "",
-	tokenExpiresAt: 0,
 	isConnected: false,
 
 	articleFilesEnabled: true,
@@ -126,22 +119,21 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.clientId)
 					.onChange(async (value) => {
 						this.plugin.settings.clientId = value;
-						this.plugin.api.updateCredentials(value, this.plugin.settings.clientSecret);
+						this.plugin.api.updateCredentials(value, loadSecrets(this.app).clientSecret);
 						await this.plugin.saveSettings();
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName("Client Secret")
-			.setDesc("From your Inoreader developer application")
+			.setName("Client secret")
+			.setDesc("From your Inoreader developer application. Stored on this device only.")
 			.addText((text) => {
 				text
 					.setPlaceholder("Enter client secret")
-					.setValue(this.plugin.settings.clientSecret)
-					.onChange(async (value) => {
-						this.plugin.settings.clientSecret = value;
+					.setValue(loadSecrets(this.app).clientSecret)
+					.onChange((value) => {
+						saveSecrets(this.app, { clientSecret: value });
 						this.plugin.api.updateCredentials(this.plugin.settings.clientId, value);
-						await this.plugin.saveSettings();
 					});
 				text.inputEl.type = "password";
 			});
@@ -151,7 +143,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			.setDesc("Authenticate with Inoreader via OAuth")
 			.addButton((btn) =>
 				btn
-					.setButtonText(this.plugin.settings.isConnected ? "Reconnect" : "Connect to Inoreader")
+					.setButtonText(this.plugin.settings.isConnected ? "Reconnect" : "Connect")
 					.onClick(() => this.plugin.startOAuthFlow()),
 			)
 			.addButton((btn) =>
@@ -254,7 +246,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 				.setName("Tags")
 				.setDesc("Sync articles with these tags -- each gets its own subfolder");
 			if (this.plugin.settings.isConnected) {
-				this.renderTagToggles(articleTagContainer, "articleFilesTags");
+				void this.renderTagToggles(articleTagContainer, "articleFilesTags");
 			} else {
 				new Setting(articleTagContainer)
 					.setName("Tag names")
@@ -409,7 +401,7 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 				.setName("Tags")
 				.setDesc("Also append articles from these tags to periodic notes");
 			if (this.plugin.settings.isConnected) {
-				this.renderTagToggles(periodicTagContainer, "periodicNoteTags");
+				void this.renderTagToggles(periodicTagContainer, "periodicNoteTags");
 			} else {
 				new Setting(periodicTagContainer)
 					.setName("Tag names")
