@@ -1,4 +1,4 @@
-import { Notice, Plugin } from "obsidian";
+import { Notice, Platform, Plugin } from "obsidian";
 import { InoreaderAPI } from "./api";
 import { SyncEngine } from "./sync";
 import { OAuthTokens } from "./types";
@@ -8,6 +8,24 @@ import {
 	InoreaderSyncSettingTab,
 } from "./settings";
 import { loadSecrets, saveSecrets } from "./secrets";
+import { OAuthCallbackServer } from "./oauth-server";
+import { OAuthPasteModal } from "./oauth-paste-modal";
+
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1000;
+
+function parseLocalhostPort(redirectUri: string): number | null {
+	let url: URL;
+	try {
+		url = new URL(redirectUri);
+	} catch {
+		return null;
+	}
+	if (url.protocol !== "http:") return null;
+	if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") return null;
+	const port = parseInt(url.port, 10);
+	if (!Number.isFinite(port) || port <= 0 || port > 65535) return null;
+	return port;
+}
 
 type LegacySettings = Partial<InoreaderSyncSettings> & {
 	// Pre-0.18 fields that lived in data.json before secrets moved to localStorage.
@@ -37,35 +55,16 @@ export default class InoreaderSyncPlugin extends Plugin {
 
 		this.addSettingTab(new InoreaderSyncSettingTab(this.app, this));
 
-		// OAuth protocol handler
+		// OAuth protocol handler (used when the redirect URI is obsidian://…,
+		// e.g. for users who registered the legacy custom-scheme URI with
+		// their Inoreader app and chose to keep using it).
 		this.registerObsidianProtocolHandler(
 			"inoreader-sync-auth",
-			async (params) => {
-				const { code, state } = params;
-
-				if (!code) {
-					new Notice("No authorization code received from Inoreader");
-					return;
-				}
-				if (state !== this.oauthState) {
-					new Notice("Authentication failed (state mismatch)");
-					return;
-				}
-
-				try {
-					const tokens = await this.api.exchangeCode(code, this.settings.redirectUri);
-					saveSecrets(this.app, {
-						accessToken: tokens.accessToken,
-						refreshToken: tokens.refreshToken,
-						tokenExpiresAt: tokens.expiresAt,
-					});
-					this.settings.isConnected = true;
-					await this.saveSettings();
-					new Notice("Connected to Inoreader");
-				} catch (e) {
-					console.error("Inoreader OAuth error:", e);
-					new Notice("Authentication failed: " + (e as Error).message);
-				}
+			(params) => {
+				void this.handleOAuthCallback({
+					code: params.code ?? "",
+					state: params.state ?? "",
+				});
 			},
 		);
 
@@ -168,14 +167,86 @@ export default class InoreaderSyncPlugin extends Plugin {
 			new Notice("Enter Inoreader client ID and secret first in settings.");
 			return;
 		}
-		if (!this.settings.redirectUri) {
+		const redirectUri = this.settings.redirectUri;
+		if (!redirectUri) {
 			new Notice("Redirect URI is empty. Set it in plugin settings.");
 			return;
 		}
 		this.oauthState = Math.random().toString(36).substring(2, 15);
-		const authUrl = this.api.getAuthUrl(this.settings.redirectUri, this.oauthState);
+		const authUrl = this.api.getAuthUrl(redirectUri, this.oauthState);
+
+		// Three callback mechanisms depending on the configured redirect URI:
+		//   obsidian://…           — Obsidian protocol handler picks it up.
+		//   http://127.0.0.1:PORT  — desktop: localhost server; mobile: paste modal.
+		//   anything else (https)  — paste modal on both platforms.
+		if (redirectUri.startsWith("obsidian://")) {
+			window.open(authUrl);
+			new Notice("Opening browser for Inoreader authentication...");
+			return;
+		}
+
+		const localhostPort = parseLocalhostPort(redirectUri);
+		if (localhostPort !== null && Platform.isDesktop) {
+			void this.runLocalhostFlow(localhostPort, authUrl);
+			return;
+		}
+
+		this.runPasteFlow(authUrl);
+	}
+
+	private async runLocalhostFlow(port: number, authUrl: string): Promise<void> {
+		const server = new OAuthCallbackServer();
+		const waitForCallback = server.listen(port, OAUTH_TIMEOUT_MS);
 		window.open(authUrl);
 		new Notice("Opening browser for Inoreader authentication...");
+		try {
+			const result = await waitForCallback;
+			await this.handleOAuthCallback(result);
+		} catch (e) {
+			server.stop();
+			console.error("Inoreader OAuth error:", e);
+			new Notice("Authentication failed: " + (e as Error).message);
+		}
+	}
+
+	private runPasteFlow(authUrl: string): void {
+		window.open(authUrl);
+		new Notice("Authenticate in your browser, then paste the redirect URL.");
+		new OAuthPasteModal(
+			this.app,
+			(result) => {
+				void this.handleOAuthCallback(result);
+			},
+			() => {
+				new Notice("Authentication cancelled.");
+			},
+		).open();
+	}
+
+	private async handleOAuthCallback(params: { code: string; state: string }): Promise<void> {
+		const { code, state } = params;
+		if (!code) {
+			new Notice("No authorization code received from Inoreader");
+			return;
+		}
+		if (state !== this.oauthState) {
+			new Notice("Authentication failed (state mismatch)");
+			return;
+		}
+		try {
+			const tokens = await this.api.exchangeCode(code, this.settings.redirectUri);
+			saveSecrets(this.app, {
+				accessToken: tokens.accessToken,
+				refreshToken: tokens.refreshToken,
+				tokenExpiresAt: tokens.expiresAt,
+			});
+			this.settings.isConnected = true;
+			await this.saveSettings();
+			new Notice("Connected to Inoreader");
+		} catch (e) {
+			console.error("Inoreader OAuth error:", e);
+			new Notice("Authentication failed: " + (e as Error).message);
+		}
 	}
 
 	disconnect(): void {
