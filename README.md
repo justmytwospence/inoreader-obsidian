@@ -23,26 +23,31 @@ Sync highlights, annotations, and articles from [Inoreader](https://www.inoreade
 
 1. Install the plugin from Obsidian's Community Plugins browser
 2. Create an Inoreader developer application at the [Inoreader Developer Console](https://www.inoreader.com/developers)
-   - Set the redirect URI to `http://127.0.0.1:42819/callback`
-   - This URL is configurable in plugin settings if you need a different port or host.
+   - Set the redirect URI to `https://justmytwospence.github.io/inoreader-obsidian/callback.html`
+   - Inoreader requires an HTTPS redirect URI. The URL above points at a static page in this repo (auditable in [`docs/callback.html`](docs/callback.html)) that redirects the browser back into Obsidian via the `obsidian://` protocol.
+   - The URL is configurable in plugin settings if you'd rather host the bouncer page yourself, use a different mechanism, or have an existing app registered with a different URL.
 3. Open the plugin settings in Obsidian
 4. Enter your Client ID and Client Secret
 5. Click "Connect" and complete the OAuth flow in your browser
 6. Configure which articles to sync (annotated, tagged, or both)
 7. Click "Sync" or use the ribbon icon to trigger your first sync
 
-### How OAuth works on each platform
+### How the OAuth flow works
 
-- **Desktop:** the plugin runs a short-lived local HTTP server on `127.0.0.1:42819` to receive the OAuth callback. The authorization code is exchanged for tokens entirely between your browser and your machine — nothing transits a third party. The server shuts down as soon as the callback arrives (or after a 5-minute timeout).
-- **Mobile:** there's no localhost server. After you authenticate in your browser, you'll see a page that fails to load (because the redirect URL points at a local address that doesn't exist on the device). Copy the URL from your browser's address bar and paste it into the prompt the plugin shows in Obsidian. The plugin extracts the code and exchanges it for tokens.
+When you click Connect, the plugin opens Inoreader's authorization page in your browser. After you authorize, Inoreader redirects to whichever URL you set in **Redirect URI**. The plugin handles four URL shapes:
+
+- **`https://…/inoreader-obsidian/…` (default):** the bouncer page reads the OAuth `code` from its own URL and navigates to `obsidian://inoreader-sync-auth?…`, which Obsidian's protocol handler picks up. The code never leaves your browser tab.
+- **`obsidian://inoreader-sync-auth`:** Obsidian's protocol handler fires directly. Only useful for users whose Inoreader app was registered before the HTTPS-only policy.
+- **`http://127.0.0.1:PORT/callback`:** desktop only. The plugin spins up a short-lived local HTTP server on that port to catch the callback. Inoreader currently rejects `http://` URIs at registration time, so this is for users grandfathered into an old app.
+- **Anything else (`https://…`):** the plugin opens a modal in Obsidian where you paste the redirect URL after your browser fails to load it. Useful if you have a self-hosted "dead" URL with no bouncer.
 
 ### Upgrading from 0.18.0 or earlier
 
 The redirect URI default changed in 0.18.1. Previously the plugin used `obsidian://inoreader-sync-auth`, but Inoreader's developer console now rejects custom URI schemes for new app registrations ([#1](https://github.com/justmytwospence/inoreader-obsidian/issues/1)).
 
 If your existing Inoreader app registration with `obsidian://inoreader-sync-auth` is still working, you have two options:
-- **Keep the old setup:** open plugin settings and set "Redirect URI" back to `obsidian://inoreader-sync-auth`. The plugin will keep using Obsidian's protocol handler.
-- **Switch to the new default:** edit your Inoreader app at the developer console, change its redirect URI to `http://127.0.0.1:42819/callback`, then reconnect from plugin settings.
+- **Keep the old setup:** open plugin settings and set "Redirect URI" back to `obsidian://inoreader-sync-auth`. The plugin will keep using Obsidian's protocol handler directly.
+- **Switch to the new default:** edit your Inoreader app at the developer console, change its redirect URI to `https://justmytwospence.github.io/inoreader-obsidian/callback.html`, then reconnect from plugin settings.
 
 ## Folder structure
 

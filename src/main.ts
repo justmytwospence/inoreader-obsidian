@@ -27,6 +27,25 @@ function parseLocalhostPort(redirectUri: string): number | null {
 	return port;
 }
 
+// A "bouncer" URL is one whose page is responsible for issuing the
+// obsidian:// navigation itself. Recognised hosts are this project's
+// GitHub Pages site and any user-owned fork on github.io. For these,
+// the plugin just opens the browser; the page handles the bounce
+// and the protocol handler completes the flow.
+function isKnownBouncerUrl(redirectUri: string): boolean {
+	let url: URL;
+	try {
+		url = new URL(redirectUri);
+	} catch {
+		return false;
+	}
+	if (url.protocol !== "https:") return false;
+	return (
+		url.hostname.endsWith(".github.io") &&
+		url.pathname.startsWith("/inoreader-obsidian/")
+	);
+}
+
 type LegacySettings = Partial<InoreaderSyncSettings> & {
 	// Pre-0.18 fields that lived in data.json before secrets moved to localStorage.
 	clientSecret?: string;
@@ -175,20 +194,27 @@ export default class InoreaderSyncPlugin extends Plugin {
 		this.oauthState = Math.random().toString(36).substring(2, 15);
 		const authUrl = this.api.getAuthUrl(redirectUri, this.oauthState);
 
-		// Three callback mechanisms depending on the configured redirect URI:
-		//   obsidian://…           — Obsidian protocol handler picks it up.
-		//   http://127.0.0.1:PORT  — desktop: localhost server; mobile: paste modal.
-		//   anything else (https)  — paste modal on both platforms.
-		if (redirectUri.startsWith("obsidian://")) {
+		// Four callback mechanisms depending on the configured redirect URI:
+		//   obsidian://…              — Obsidian protocol handler picks it up directly.
+		//   https://…bouncer pattern  — HTTPS page on Pages bounces to obsidian://;
+		//                               protocol handler picks it up.
+		//   http://127.0.0.1:PORT     — desktop: localhost HTTP server captures the
+		//                               callback; mobile: paste modal (no server on mobile).
+		//   anything else (https://…) — paste modal: user authenticates in browser,
+		//                               pastes the redirect URL back into Obsidian.
+		if (redirectUri.startsWith("obsidian://") || isKnownBouncerUrl(redirectUri)) {
 			window.open(authUrl);
 			new Notice("Opening browser for Inoreader authentication...");
 			return;
 		}
 
 		const localhostPort = parseLocalhostPort(redirectUri);
-		if (localhostPort !== null && Platform.isDesktop) {
-			void this.runLocalhostFlow(localhostPort, authUrl);
-			return;
+		if (localhostPort !== null) {
+			if (Platform.isDesktop) {
+				void this.runLocalhostFlow(localhostPort, authUrl);
+				return;
+			}
+			// Mobile can't run a server; fall through to paste flow.
 		}
 
 		this.runPasteFlow(authUrl);

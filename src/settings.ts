@@ -14,7 +14,7 @@ export const NOTE_TYPE_DATE_FORMATS: Record<NoteType, string> = {
 	yearly: "YYYY",
 };
 
-export const DEFAULT_REDIRECT_URI = "http://127.0.0.1:42819/callback";
+export const DEFAULT_REDIRECT_URI = "https://justmytwospence.github.io/inoreader-obsidian/callback.html";
 
 export interface InoreaderSyncSettings {
 	// Auth (secrets live in localStorage, see src/secrets.ts)
@@ -146,9 +146,10 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 			.setName("Redirect URI")
 			.setDesc(
 				"Register this exact URL with your Inoreader developer application. " +
-				"On desktop, the plugin runs a temporary local server on this port to capture " +
-				"the OAuth callback. On mobile, you'll be prompted to paste the redirect URL " +
-				"after authenticating. Only change this if you registered a different URL.",
+				"The default is a static page in this plugin's repo that bounces back into " +
+				"Obsidian. Inoreader requires HTTPS, so localhost URLs won't be accepted " +
+				"when registering a new app. Only change this if you host your own bouncer " +
+				"or registered a different URL.",
 			)
 			.addText((text) =>
 				text

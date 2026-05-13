@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Inoreader Sync — Authentication</title>
+<style>
+	html, body {
+		margin: 0;
+		padding: 0;
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+		background: #1e1e1e;
+		color: #e4e4e4;
+		min-height: 100vh;
+	}
+	main {
+		max-width: 540px;
+		margin: 0 auto;
+		padding: 4em 1.5em;
+		line-height: 1.55;
+	}
+	h1 {
+		font-size: 1.4em;
+		margin: 0 0 0.6em;
+	}
+	p {
+		margin: 0 0 1em;
+	}
+	a.button {
+		display: inline-block;
+		margin-top: 0.5em;
+		padding: 0.6em 1.2em;
+		background: #7c3aed;
+		color: #fff;
+		text-decoration: none;
+		border-radius: 6px;
+		font-weight: 500;
+	}
+	a.button:hover {
+		background: #6d28d9;
+	}
+	code {
+		background: #2a2a2a;
+		padding: 0.1em 0.35em;
+		border-radius: 3px;
+		font-size: 0.9em;
+	}
+	.error {
+		color: #fca5a5;
+	}
+</style>
+</head>
+<body>
+<main>
+	<h1>Authenticating with Inoreader…</h1>
+	<p id="status">You should be redirected back to Obsidian in a moment.</p>
+	<p id="fallback" style="display:none">
+		If Obsidian doesn't open automatically, click the button below.
+		Your browser may ask for permission to launch an external application.
+	</p>
+	<p><a id="manual-link" class="button" style="display:none" href="#">Open Obsidian</a></p>
+	<p id="error" class="error" style="display:none"></p>
+</main>
+<script>
+	(function () {
+		var PROTOCOL_TARGET = "obsidian://inoreader-sync-auth";
+		var search = window.location.search || "";
+		var params = new URLSearchParams(search);
+		var statusEl = document.getElementById("status");
+		var fallbackEl = document.getElementById("fallback");
+		var linkEl = document.getElementById("manual-link");
+		var errorEl = document.getElementById("error");
+
+		// Only forward the OAuth parameters Obsidian's handler needs.
+		// Anything else from the query string is dropped.
+		var forwarded = new URLSearchParams();
+		var code = params.get("code");
+		var state = params.get("state");
+		var oauthError = params.get("error");
+		var oauthErrorDescription = params.get("error_description");
+
+		if (oauthError) {
+			statusEl.style.display = "none";
+			errorEl.style.display = "block";
+			errorEl.textContent =
+				"Inoreader returned an error: " + oauthError +
+				(oauthErrorDescription ? " — " + oauthErrorDescription : "") +
+				". You can close this tab.";
+			return;
+		}
+
+		if (!code || !state) {
+			statusEl.style.display = "none";
+			errorEl.style.display = "block";
+			errorEl.textContent =
+				"This page expected OAuth parameters (code, state) in the URL but they were missing. " +
+				"If you reached this page directly, you can close the tab.";
+			return;
+		}
+
+		forwarded.set("code", code);
+		forwarded.set("state", state);
+
+		var target = PROTOCOL_TARGET + "?" + forwarded.toString();
+		linkEl.href = target;
+
+		// Try to redirect automatically. If the browser blocks the protocol
+		// handler (some require a user gesture), show the manual link.
+		try {
+			window.location.href = target;
+		} catch (e) {
+			// fall through to manual link
+		}
+
+		setTimeout(function () {
+			fallbackEl.style.display = "block";
+			linkEl.style.display = "inline-block";
+		}, 1500);
+	})();
+</script>
+</body>
+</html>
