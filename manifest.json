@@ -1,7 +1,7 @@
 {
   "id": "inoreader-sync",
   "name": "Inoreader Sync",
-  "version": "0.18.0",
+  "version": "0.18.1",
   "minAppVersion": "1.8.7",
   "description": "Sync highlights, annotations, and articles from Inoreader into your vault.",
   "author": "Spencer Boucher",

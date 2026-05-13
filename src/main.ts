@@ -9,8 +9,6 @@ import {
 } from "./settings";
 import { loadSecrets, saveSecrets } from "./secrets";
 
-const REDIRECT_URI = "obsidian://inoreader-sync-auth";
-
 type LegacySettings = Partial<InoreaderSyncSettings> & {
 	// Pre-0.18 fields that lived in data.json before secrets moved to localStorage.
 	clientSecret?: string;
@@ -55,7 +53,7 @@ export default class InoreaderSyncPlugin extends Plugin {
 				}
 
 				try {
-					const tokens = await this.api.exchangeCode(code, REDIRECT_URI);
+					const tokens = await this.api.exchangeCode(code, this.settings.redirectUri);
 					saveSecrets(this.app, {
 						accessToken: tokens.accessToken,
 						refreshToken: tokens.refreshToken,
@@ -170,8 +168,12 @@ export default class InoreaderSyncPlugin extends Plugin {
 			new Notice("Enter Inoreader client ID and secret first in settings.");
 			return;
 		}
+		if (!this.settings.redirectUri) {
+			new Notice("Redirect URI is empty. Set it in plugin settings.");
+			return;
+		}
 		this.oauthState = Math.random().toString(36).substring(2, 15);
-		const authUrl = this.api.getAuthUrl(REDIRECT_URI, this.oauthState);
+		const authUrl = this.api.getAuthUrl(this.settings.redirectUri, this.oauthState);
 		window.open(authUrl);
 		new Notice("Opening browser for Inoreader authentication...");
 	}

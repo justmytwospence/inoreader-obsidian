@@ -14,9 +14,12 @@ export const NOTE_TYPE_DATE_FORMATS: Record<NoteType, string> = {
 	yearly: "YYYY",
 };
 
+export const DEFAULT_REDIRECT_URI = "https://justmytwospence.github.io/inoreader-obsidian/callback.html";
+
 export interface InoreaderSyncSettings {
 	// Auth (secrets live in localStorage, see src/secrets.ts)
 	clientId: string;
+	redirectUri: string;
 	isConnected: boolean;
 
 	// Article files
@@ -54,6 +57,7 @@ export interface InoreaderSyncSettings {
 
 export const DEFAULT_SETTINGS: InoreaderSyncSettings = {
 	clientId: "",
+	redirectUri: DEFAULT_REDIRECT_URI,
 	isConnected: false,
 
 	articleFilesEnabled: true,
@@ -137,6 +141,23 @@ export class InoreaderSyncSettingTab extends PluginSettingTab {
 					});
 				text.inputEl.type = "password";
 			});
+
+		new Setting(containerEl)
+			.setName("Redirect URI")
+			.setDesc(
+				"Register this exact URL with your Inoreader developer application. " +
+				"The default is a static page hosted on GitHub Pages that bounces back into Obsidian. " +
+				"Only change this if you registered a different URL when you created the app.",
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(DEFAULT_REDIRECT_URI)
+					.setValue(this.plugin.settings.redirectUri)
+					.onChange(async (value) => {
+						this.plugin.settings.redirectUri = value.trim();
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		new Setting(containerEl)
 			.setName("Connect")
